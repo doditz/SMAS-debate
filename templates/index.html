@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎭 SMAS Debate - AI-Powered Debates</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            animation: slideUp 0.5s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            font-size: 1.1em;
+            color: #666;
+            margin-bottom: 20px;
+        }
+
+        .status {
+            display: inline-flex;
+            align-items: center;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: 600;
+            font-size: 0.9em;
+            margin-bottom: 20px;
+        }
+
+        .status.healthy {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #444;
+            font-size: 1em;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1em;
+            font-family: inherit;
+            transition: border-color 0.3s ease;
+        }
+
+        input[type="text"]:focus,
+        input[type="number"]:focus,
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        input[type="number"] {
+            width: 100px;
+        }
+
+        button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            margin-top: 10px;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .spinner {
+            display: none;
+            width: 40px;
+            height: 40px;
+            margin: 30px auto;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .spinner.active {
+            display: block;
+        }
+
+        #results {
+            margin-top: 30px;
+        }
+
+        .round {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            border-left: 4px solid #667eea;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .round-title {
+            font-size: 1.3em;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .argument {
+            margin-bottom: 15px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .argument-header {
+            font-weight: 700;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        .pro .argument-header {
+            color: #28a745;
+        }
+
+        .con .argument-header {
+            color: #dc3545;
+        }
+
+        .argument-text {
+            line-height: 1.6;
+            color: #555;
+        }
+
+        .error-message {
+            padding: 15px;
+            background-color: #f8d7da;
+            color: #721c24;
+            border-radius: 8px;
+            border-left: 4px solid #dc3545;
+            margin-top: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+
+            h1 {
+                font-size: 2em;
+            }
+
+            .subtitle {
+                font-size: 1em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎭 SMAS Debate</h1>
+            <p class="subtitle">Smart Multi-Agent System - AI-Powered Debates via GitHub Models</p>
+            <div id="status" class="status">Checking status...</div>
+        </header>
+
+        <div class="form-group">
+            <label for="topic">Debate Topic</label>
+            <input type="text" id="topic" placeholder="Enter a debate topic (e.g., 'Artificial Intelligence will benefit humanity')" />
+        </div>
+
+        <div class="form-group">
+            <label for="model">AI Model</label>
+            <select id="model">
+                <option value="gpt-4o-mini">GPT-4o Mini (Recommended)</option>
+                <option value="gpt-4o">GPT-4o</option>
+                <option value="meta-llama-3.1-405b-instruct">Llama 3.1 405B</option>
+                <option value="mistral-large">Mistral Large</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="rounds">Number of Rounds (1-5)</label>
+            <input type="number" id="rounds" min="1" max="5" value="3" />
+        </div>
+
+        <button id="startBtn" onclick="startDebate()">Start Debate</button>
+
+        <div class="spinner" id="spinner"></div>
+
+        <div id="results"></div>
+    </div>
+
+    <script>
+        // Check health status on page load
+        window.addEventListener('DOMContentLoaded', checkHealth);
+
+        async function checkHealth() {
+            try {
+                const response = await fetch('/api/health');
+                const data = await response.json();
+                
+                const statusEl = document.getElementById('status');
+                
+                if (data.status === 'healthy' && data.api_configured) {
+                    statusEl.textContent = '✅ System Ready';
+                    statusEl.className = 'status healthy';
+                } else {
+                    statusEl.textContent = '❌ GitHub Token Not Configured';
+                    statusEl.className = 'status error';
+                }
+            } catch (error) {
+                const statusEl = document.getElementById('status');
+                statusEl.textContent = '❌ Connection Error';
+                statusEl.className = 'status error';
+            }
+        }
+
+        async function startDebate() {
+            const topic = document.getElementById('topic').value.trim();
+            const model = document.getElementById('model').value;
+            const rounds = parseInt(document.getElementById('rounds').value);
+
+            if (!topic) {
+                alert('Please enter a debate topic');
+                return;
+            }
+
+            if (rounds < 1 || rounds > 5) {
+                alert('Rounds must be between 1 and 5');
+                return;
+            }
+
+            // Disable button and show spinner
+            const startBtn = document.getElementById('startBtn');
+            const spinner = document.getElementById('spinner');
+            const resultsEl = document.getElementById('results');
+            
+            startBtn.disabled = true;
+            startBtn.textContent = 'Debating...';
+            spinner.classList.add('active');
+            resultsEl.innerHTML = '';
+
+            try {
+                const response = await fetch('/api/debate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        topic: topic,
+                        model: model,
+                        rounds: rounds
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'An error occurred');
+                }
+
+                displayResults(data);
+            } catch (error) {
+                resultsEl.innerHTML = `<div class="error-message">
+                    <strong>Error:</strong> ${error.message}
+                </div>`;
+            } finally {
+                startBtn.disabled = false;
+                startBtn.textContent = 'Start Debate';
+                spinner.classList.remove('active');
+            }
+        }
+
+        function displayResults(data) {
+            const resultsEl = document.getElementById('results');
+            
+            let html = `<div style="text-align: center; margin-bottom: 20px;">
+                <h2 style="color: #667eea;">📊 Debate Results</h2>
+                <p style="color: #666; margin-top: 10px;"><strong>Topic:</strong> ${escapeHtml(data.topic)}</p>
+                <p style="color: #666;"><strong>Model:</strong> ${escapeHtml(data.model)}</p>
+            </div>`;
+
+            data.rounds.forEach(round => {
+                html += `
+                    <div class="round">
+                        <div class="round-title">Round ${round.round}</div>
+                        
+                        <div class="argument pro">
+                            <div class="argument-header">👍 Pro Argument</div>
+                            <div class="argument-text">${escapeHtml(round.pro)}</div>
+                        </div>
+                        
+                        <div class="argument con">
+                            <div class="argument-header">👎 Con Argument</div>
+                            <div class="argument-text">${escapeHtml(round.con)}</div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            resultsEl.innerHTML = html;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
