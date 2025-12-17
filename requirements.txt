@@ -1,0 +1,8 @@
+litestar[standard]
+onnxruntime
+psutil
+numpy
+uvicorn
+websockets
+# pynvml is optional for NVIDIA GPU monitoring, add if a GPU is available
+# pynvml

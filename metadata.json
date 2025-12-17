@@ -1,0 +1,5 @@
+{
+  "name": "SMAS: Transparent AI Debate System",
+  "description": "A web application that visualizes the SMAS (Semantic Multi-Agent System) for transparent and ethical AI deliberation, based on the research paper. Users can input a query and watch the simulated debate process unfold.",
+  "requestFramePermissions": []
+}
