@@ -55,7 +55,7 @@ const ValueAnalysisPanel: React.FC<{ result: BatchResult }> = ({ result }) => {
 };
 
 const CriteriaComparisonPanel: React.FC<{ result: BatchResult }> = ({ result }) => {
-    if (!result.evaluation) return null;
+    if (!result.evaluation?.smas?.criteria || !result.evaluation?.llm?.criteria) return null;
     const smasCriteria = result.evaluation.smas.criteria;
     const llmCriteria = result.evaluation.llm.criteria;
     const criteriaKeys = Object.keys(smasCriteria) as (keyof typeof smasCriteria)[];
@@ -71,16 +71,16 @@ const CriteriaComparisonPanel: React.FC<{ result: BatchResult }> = ({ result }) 
                             <div className="flex items-center space-x-2">
                                 <span className="text-xs font-mono text-indigo-300 w-16 text-right">Enhanced</span>
                                 <div className="w-full bg-gray-700 rounded-full h-2.5">
-                                    <div className="bg-indigo-500 h-2.5 rounded-full" style={{ width: `${smasCriteria[key] * 100}%`}}></div>
+                                    <div className="bg-indigo-500 h-2.5 rounded-full" style={{ width: `${(smasCriteria[key] || 0) * 100}%`}}></div>
                                 </div>
-                                <span className="text-xs font-semibold text-gray-200 w-8 text-right">{smasCriteria[key].toFixed(2)}</span>
+                                <span className="text-xs font-semibold text-gray-200 w-8 text-right">{(smasCriteria[key] || 0).toFixed(2)}</span>
                             </div>
                              <div className="flex items-center space-x-2">
                                 <span className="text-xs font-mono text-gray-400 w-16 text-right">Baseline</span>
                                 <div className="w-full bg-gray-700 rounded-full h-2.5">
-                                    <div className="bg-gray-500 h-2.5 rounded-full" style={{ width: `${llmCriteria[key] * 100}%`}}></div>
+                                    <div className="bg-gray-500 h-2.5 rounded-full" style={{ width: `${(llmCriteria[key] || 0) * 100}%`}}></div>
                                 </div>
-                                <span className="text-xs font-semibold text-gray-200 w-8 text-right">{llmCriteria[key].toFixed(2)}</span>
+                                <span className="text-xs font-semibold text-gray-200 w-8 text-right">{(llmCriteria[key] || 0).toFixed(2)}</span>
                             </div>
                         </div>
                     </div>
@@ -193,7 +193,8 @@ const HumanFeedback: React.FC<{ queryId: string }> = ({ queryId }) => {
 
 
 const ResultRow: React.FC<{ result: BatchResult; isExpanded: boolean; onToggle: () => void }> = ({ result, isExpanded, onToggle }) => {
-    const isSuccess = !!result.evaluation;
+    // Evaluation exists only if both sub-objects are likely present, but we do safe access below.
+    const isSuccess = !!result.evaluation && !!result.evaluation.smas && !!result.evaluation.llm;
     
     return (
         <div className={`rounded-lg ${isSuccess ? 'bg-gray-800' : 'bg-red-900/50'}`}>
@@ -208,14 +209,14 @@ const ResultRow: React.FC<{ result: BatchResult; isExpanded: boolean; onToggle: 
                     <div className="flex flex-col items-end">
                         <span className="text-[10px] text-indigo-400 uppercase">Enhanced</span>
                          <span className={`font-mono px-2 py-0.5 rounded ${isSuccess ? 'bg-green-500/10 text-green-300' : 'bg-red-500/10 text-red-300'}`}>
-                            {isSuccess ? result.evaluation?.smas.overall_score.toFixed(2) : '-'}
+                            {isSuccess ? result.evaluation?.smas?.overall_score?.toFixed(2) : '-'}
                         </span>
                     </div>
                      <span className="text-gray-600 text-xs">vs</span>
                      <div className="flex flex-col items-start">
                         <span className="text-[10px] text-gray-500 uppercase">Baseline</span>
                          <span className={`font-mono px-2 py-0.5 rounded ${isSuccess ? 'bg-gray-500/10 text-gray-300' : 'bg-red-500/10 text-red-300'}`}>
-                            {isSuccess ? result.evaluation?.llm.overall_score.toFixed(2) : '-'}
+                            {isSuccess ? result.evaluation?.llm?.overall_score?.toFixed(2) : '-'}
                         </span>
                     </div>
                 </div>
@@ -260,7 +261,7 @@ const ResultRow: React.FC<{ result: BatchResult; isExpanded: boolean; onToggle: 
                      <motion.div initial={{height:0,opacity:0}} animate={{height:'auto',opacity:1}} exit={{height:0,opacity:0}} className="overflow-hidden">
                         <div className="p-4 border-t border-red-500/20 text-center">
                             <p className="text-red-300 font-semibold">Test Failed</p>
-                            <p className="text-xs text-red-400 mt-1 font-mono">{result.error}</p>
+                            <p className="text-xs text-red-400 mt-1 font-mono">{result.error || "Evaluation data missing."}</p>
                         </div>
                     </motion.div>
                  )}

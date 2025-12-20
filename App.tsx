@@ -14,6 +14,7 @@ import { RealtimeMetricsMonitor } from './components/RealtimeMetricsMonitor';
 import { EthicalGovernanceMonitor } from './components/EthicalGovernanceMonitor';
 import { MemoryVisualizer } from './components/MemoryVisualizer';
 import { WhitepaperModal } from './components/WhitepaperModal';
+import { TheVisionModal } from './components/TheVisionModal';
 import { developmentTests } from './data/benchmarkQueries'; 
 import smasService from './services/smasService';
 import realtimeMetricsService from './services/realtimeMetricsService';
@@ -38,7 +39,7 @@ import { ImageResultDisplay } from './components/ImageResultDisplay';
 import { CognitiveDissentDashboard } from './components/CognitiveDissentDashboard';
 import { AutoOptimizerControls } from './components/AutoOptimizerControls';
 import { ArchitectureOptimizationLab } from './components/ArchitectureOptimizationLab';
-import { Bars3Icon, SpeakerWaveIcon, StopIcon, SignalIcon, ExclamationTriangleIcon, HandThumbUpIcon } from './components/Icons';
+import { Bars3Icon, SpeakerWaveIcon, StopIcon, SignalIcon, ExclamationTriangleIcon, EyeIcon } from './components/Icons';
 
 
 const fileToBase64 = (file: File): Promise<string> =>
@@ -94,6 +95,7 @@ const App: React.FC = () => {
     const [isPlayingAudio, setIsPlayingAudio] = useState(false);
 
     const [isWhitepaperOpen, setIsWhitepaperOpen] = useState(false);
+    const [isVisionOpen, setIsVisionOpen] = useState(false);
     const [isTestSummaryOpen, setIsTestSummaryOpen] = useState(false); 
     const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
     
@@ -339,6 +341,10 @@ const App: React.FC = () => {
                             <span>{!hasApiKey ? 'No API Key' : (isSimulationMode ? 'Simulation Active' : 'Online Mode')}</span>
                         </button>
                         <ModeToggle mode={mode} setMode={setMode}/>
+                        <button onClick={() => setIsVisionOpen(true)} className="flex items-center gap-1.5 text-sm font-semibold text-indigo-400 hover:text-white bg-indigo-500/10 border border-indigo-500/30 px-3 py-1.5 rounded-full transition-all hover:bg-indigo-500/20">
+                            <EyeIcon className="w-4 h-4" />
+                            <span>The Vision</span>
+                        </button>
                         <button onClick={() => setIsWhitepaperOpen(true)} className="text-sm text-gray-400 hover:text-white">Whitepaper</button>
                         <UserProfile user={user} onLogin={setUser} onLogout={() => setUser(null)} />
                     </div>
@@ -474,7 +480,10 @@ const App: React.FC = () => {
                                                                 )}
                                                             </button>
                                                         </div>
-                                                        <div className="prose prose-invert prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: finalResponse.replace(/\n/g, '<br />') }} />
+                                                        {/* RETRO THEME STYLING CONTAINER */}
+                                                        <div className="font-mono text-sm leading-relaxed whitespace-pre-wrap text-orange-400 bg-gray-950 p-4 rounded-lg border border-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.2)]">
+                                                            {finalResponse}
+                                                        </div>
                                                      </div>
                                                 )}
                                                 {debateState?.factCheckSources && debateState.factCheckSources.length > 0 && <FactCheckDisplay sources={debateState.factCheckSources} executionMode={executionMode} />}
@@ -498,6 +507,7 @@ const App: React.FC = () => {
             </div>
 
             <WhitepaperModal isOpen={isWhitepaperOpen} onClose={() => setIsWhitepaperOpen(false)} />
+            <TheVisionModal isOpen={isVisionOpen} onClose={() => setIsVisionOpen(false)} />
             <TestRunSummaryModal isOpen={isTestSummaryOpen} onClose={() => setIsTestSummaryOpen(false)} results={batchResults} />
         </div>
     );
