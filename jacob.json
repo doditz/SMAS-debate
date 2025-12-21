@@ -1,0 +1,46 @@
+{
+  "name": "SMAS Debate System",
+  "description": "Transparent AI Debate System built with React, TypeScript, and Vite",
+  "language": "typescript",
+  "framework": "react",
+  "buildTool": "vite",
+  "packageManager": "npm",
+  "commands": {
+    "install": "npm install",
+    "build": "npm run build",
+    "dev": "npm run dev",
+    "preview": "npm run preview"
+  },
+  "directories": {
+    "source": ".",
+    "components": "components",
+    "services": "services",
+    "config": "config",
+    "data": "data"
+  },
+  "files": {
+    "config": [
+      "tsconfig.json",
+      "vite.config.ts",
+      "package.json"
+    ],
+    "entry": "index.tsx",
+    "html": "index.html"
+  },
+  "environment": {
+    "node": ">=18.0.0",
+    "requiredEnvVars": [
+      "GEMINI_API_KEY"
+    ]
+  },
+  "additionalLanguages": [
+    {
+      "language": "python",
+      "files": ["onnx_neuronas_optimizer.py"],
+      "requirements": "requirements.txt",
+      "commands": {
+        "install": "pip install -r requirements.txt"
+      }
+    }
+  ]
+}
