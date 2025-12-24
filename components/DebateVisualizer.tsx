@@ -141,32 +141,19 @@ const SuperpositionVisualizer: React.FC<{ superposition: QronasState[]; collapse
     );
 };
 
-const BrainDebate: React.FC<{ perspectives: PersonaPerspective[], dissentLevel?: number }> = ({ perspectives, dissentLevel = 0.5 }) => {
-    // STEP 3: DYNAMIC TOPOLOGY
-    // Nodes position is now influenced by 'dissentLevel' (semantic distance)
-    
+const BrainDebate: React.FC<{ perspectives: PersonaPerspective[], dissentLevel?: number, activePersona?: string }> = ({ perspectives, dissentLevel = 0.5, activePersona }) => {
     const nodes = useMemo(() => {
-        // Safety check to prevent map errors
         if (!perspectives || perspectives.length === 0) return [];
 
         const left = perspectives.filter(p => p.hemisphere === 'Left');
         const right = perspectives.filter(p => p.hemisphere === 'Right');
         const central = perspectives.filter(p => p.hemisphere === 'Central');
 
-        // Higher dissent = Greater spread (repulsion)
-        // Lower dissent = Tighter cluster (consensus)
-        const spreadMultiplier = 0.5 + (dissentLevel * 1.0); // 0.5 to 1.5
-        
         const generatePos = (index: number, total: number, baseX: number, seedStr: string) => {
-            // Deterministic Y distribution
             const yStep = 140 / (total + 1);
             const y = 20 + yStep * (index + 1) + (seededRandom(seedStr + 'y') * 20 - 10);
-            
-            // Deterministic X jitter + Dissent Spread
-            // Left moves further Left, Right moves further Right if dissent is high
             const drift = (baseX === 200) ? 0 : (baseX < 200 ? -40 : 40) * (dissentLevel - 0.5);
             const x = baseX + drift + (seededRandom(seedStr + 'x') * 40 - 20);
-            
             return { x, y };
         };
 
@@ -197,12 +184,10 @@ const BrainDebate: React.FC<{ perspectives: PersonaPerspective[], dissentLevel?:
     return (
         <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
             <svg viewBox="0 0 400 200" className="w-full h-full absolute opacity-20 pointer-events-none">
-                {/* Background Brain Shape */}
                 <path d="M 100,20 A 80 80 0 0 0 100,180 C 180 180 200 100 200 100 C 200 100 180 20 100 20 Z" fill="none" stroke="#3b82f6" strokeWidth="1" strokeDasharray="4 4" />
                 <path d="M 300,20 A 80 80 0 0 1 300,180 C 220 180 200 100 200 100 C 200 100 220 20 300 20 Z" fill="none" stroke="#a855f7" strokeWidth="1" strokeDasharray="4 4" />
                 <rect x="180" y="70" width="40" height="60" fill="none" stroke="#22c55e" strokeWidth="1" rx="10" strokeDasharray="4 4" />
                 
-                {/* Synaptic Connections */}
                 <AnimatePresence>
                     {connections.map(link => (
                         <motion.line
@@ -219,20 +204,28 @@ const BrainDebate: React.FC<{ perspectives: PersonaPerspective[], dissentLevel?:
             </svg>
 
             <div className="relative w-full max-w-lg h-full">
-                {nodes.map((node) => (
-                    <motion.div
-                        key={node.hash}
-                        initial={{ opacity: 0, scale: 0 }}
-                        animate={{ opacity: 1, scale: 1, left: node.x * (100/400) + '%', top: node.y * (100/200) + '%' }}
-                        transition={{ type: 'spring', stiffness: 260, damping: 20 }}
-                        className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center"
-                    >
-                        <div className={`w-3 h-3 rounded-full shadow-[0_0_10px_currentColor] ${node.hemisphere === 'Left' ? 'text-blue-400 bg-blue-400' : node.hemisphere === 'Right' ? 'text-purple-400 bg-purple-400' : 'text-green-400 bg-green-400'}`} />
-                        <div className={`mt-2 px-2 py-1 rounded text-[10px] font-semibold border backdrop-blur-md shadow-sm max-w-[120px] text-center ${hemisphereColors[node.hemisphere]}`}>
-                            {node.persona}
-                        </div>
-                    </motion.div>
-                ))}
+                {nodes.map((node) => {
+                    const isSpeaking = activePersona === node.persona;
+                    return (
+                        <motion.div
+                            key={node.hash}
+                            initial={{ opacity: 0, scale: 0 }}
+                            animate={{ 
+                                opacity: 1, 
+                                scale: isSpeaking ? 1.2 : 1, 
+                                left: node.x * (100/400) + '%', 
+                                top: node.y * (100/200) + '%' 
+                            }}
+                            transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+                            className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-10"
+                        >
+                            <div className={`w-3 h-3 rounded-full shadow-[0_0_10px_currentColor] transition-all duration-300 ${node.hemisphere === 'Left' ? 'text-blue-400 bg-blue-400' : node.hemisphere === 'Right' ? 'text-purple-400 bg-purple-400' : 'text-green-400 bg-green-400'} ${isSpeaking ? 'ring-4 ring-white shadow-[0_0_20px_white]' : ''}`} />
+                            <div className={`mt-2 px-2 py-1 rounded text-[10px] font-bold border backdrop-blur-md shadow-sm max-w-[120px] text-center transition-all ${isSpeaking ? 'scale-110 border-white text-white' : hemisphereColors[node.hemisphere]}`}>
+                                {node.persona}
+                            </div>
+                        </motion.div>
+                    );
+                })}
             </div>
         </div>
     );
@@ -245,7 +238,7 @@ export const DebateVisualizer: React.FC<DebateVisualizerProps> = ({ debateState,
         if (debateState?.status === 'superposition' || debateState?.status === 'collapsed') {
             setView('qtree');
         } else if (['debating', 'synthesis', 'governance_check', 'complete'].includes(debateState?.status || '')) {
-            const timer = setTimeout(() => setView('brain'), 800); // Longer delay to let collapse animation finish
+            const timer = setTimeout(() => setView('brain'), 800); 
             return () => clearTimeout(timer);
         } else if (!debateState) {
             setView('qtree');
@@ -295,6 +288,7 @@ export const DebateVisualizer: React.FC<DebateVisualizerProps> = ({ debateState,
                             <BrainDebate 
                                 perspectives={debateState.perspectives || []} 
                                 dissentLevel={debateState.validation?.dissentLevel}
+                                activePersona={debateState.activePersona}
                             />
                         </motion.div>
                     )}

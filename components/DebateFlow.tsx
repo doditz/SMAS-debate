@@ -26,23 +26,22 @@ const DebateInsights: React.FC<{ analysis: DebateAnalysis }> = ({ analysis }) =>
             </h4>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Most Influential & Contention */}
                 <div className="space-y-3">
                     <div>
                         <span className="text-[10px] text-indigo-400 font-semibold block">MOST INFLUENTIAL</span>
-                        <span className="text-sm font-bold text-white">{analysis.most_influential}</span>
+                        <span className="text-sm font-bold text-white">{analysis.most_influential || 'Synthesis Node'}</span>
                     </div>
                     <div>
                         <span className="text-[10px] text-red-400 font-semibold block">KEY CONTENTIONS</span>
                         <ul className="list-disc list-inside text-xs text-gray-300 mt-1 space-y-0.5">
-                            {analysis.contention_points.map((pt, i) => (
+                            {(analysis.contention_points || []).map((pt, i) => (
                                 <li key={i}>{pt}</li>
                             ))}
+                            {(!analysis.contention_points || analysis.contention_points.length === 0) && <li>No significant contentions detected.</li>}
                         </ul>
                     </div>
                 </div>
 
-                {/* Arguments Summary */}
                 <div className="space-y-3 border-l border-gray-700/50 pl-3">
                     <div>
                         <span className="text-[10px] text-green-400 font-semibold block flex items-center">
@@ -50,7 +49,7 @@ const DebateInsights: React.FC<{ analysis: DebateAnalysis }> = ({ analysis }) =>
                             CORE ARGUMENTS (THESIS)
                         </span>
                         <ul className="text-xs text-gray-300 mt-1 space-y-1">
-                            {analysis.key_arguments.map((arg, i) => (
+                            {(analysis.key_arguments || []).map((arg, i) => (
                                 <li key={i} className="flex items-start">
                                     <span className="text-green-500 mr-1.5">•</span>
                                     <span>{arg}</span>
@@ -64,7 +63,7 @@ const DebateInsights: React.FC<{ analysis: DebateAnalysis }> = ({ analysis }) =>
                             COUNTER-POINTS (ANTITHESIS)
                         </span>
                         <ul className="text-xs text-gray-300 mt-1 space-y-1">
-                            {analysis.counter_arguments.map((arg, i) => (
+                            {(analysis.counter_arguments || []).map((arg, i) => (
                                 <li key={i} className="flex items-start">
                                     <span className="text-orange-500 mr-1.5">•</span>
                                     <span>{arg}</span>
@@ -87,7 +86,6 @@ export const DebateFlow: React.FC<DebateFlowProps> = ({ debateState, executionMo
             <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700/50 h-full flex flex-col">
                 <h3 className="text-lg font-semibold text-indigo-300 mb-3 flex-shrink-0">Debate Transcript</h3>
                 
-                {/* Visual Analysis Dashboard */}
                 {analysis && (
                     <motion.div 
                         initial={{ opacity: 0, height: 0 }} 
@@ -98,9 +96,10 @@ export const DebateFlow: React.FC<DebateFlowProps> = ({ debateState, executionMo
                 )}
 
                 {transcript.length > 0 ? (
-                    <div className="space-y-4 overflow-y-auto flex-1 pr-2">
+                    <div className="space-y-4 overflow-y-auto flex-1 pr-2 custom-scrollbar">
                         {transcript.map((entry, index) => {
-                            const personaInfo = debateState?.perspectives.find(p => p.persona === entry.persona);
+                            const personaName = entry.persona || entry.speaker || 'Unknown';
+                            const personaInfo = debateState?.perspectives?.find(p => p.persona === personaName);
                             const colorClass = personaInfo ? hemisphereColors[personaInfo.hemisphere] : 'border-l-gray-500';
 
                             return (
@@ -111,7 +110,7 @@ export const DebateFlow: React.FC<DebateFlowProps> = ({ debateState, executionMo
                                     transition={{ delay: index * 0.1 }}
                                     className={`pl-3 border-l-4 ${colorClass}`}
                                 >
-                                    <p className="font-semibold text-sm text-gray-200">{entry.persona}</p>
+                                    <p className="font-semibold text-sm text-gray-200">{personaName}</p>
                                     <p className="text-sm text-gray-400">{entry.text}</p>
                                 </motion.div>
                             );

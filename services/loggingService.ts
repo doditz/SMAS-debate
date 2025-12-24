@@ -1,23 +1,28 @@
 
 // services/loggingService.ts
-import { LogEntry, LogLevel } from '../types';
+import { LogEntry, LogLevel, BatchResult } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 class LoggingService {
     private logs: LogEntry[] = [];
+    private experimentRegistry: Map<string, BatchResult> = new Map();
     private listeners: ((logs: LogEntry[]) => void)[] = [];
-    private maxLogs = 2000; // Retain history
+    private maxLogs = 3000;
 
     constructor() {
-        // Capture unhandled exceptions globally
         if (typeof window !== 'undefined') {
             window.addEventListener('error', (event) => {
-                this.error('Unhandled Runtime Error', { message: event.message, filename: event.filename, lineno: event.lineno }, event.error?.stack);
-            });
-            window.addEventListener('unhandledrejection', (event) => {
-                this.error('Unhandled Promise Rejection', { reason: event.reason });
+                this.error('Critical Runtime Error', { msg: event.message, file: event.filename }, event.error?.stack);
             });
         }
+    }
+
+    public registerExperiment(result: BatchResult) {
+        this.experimentRegistry.set(result.id, result);
+        this.info(`[W&B] Experiment Registered: ${result.test.question_id}`, { 
+            id: result.id, 
+            lift: `${result.valueAnalysis?.scoreDeltaPercent.toFixed(1)}%` 
+        });
     }
 
     private addLog(level: LogLevel, message: string, context?: any, stack?: string) {
@@ -26,84 +31,48 @@ class LoggingService {
             timestamp: Date.now(),
             level,
             message,
-            // Deep clone context to prevent reference mutation if the object changes later
-            context: context ? JSON.parse(JSON.stringify(context, this.getCircularReplacer())) : undefined,
+            context: context ? JSON.parse(JSON.stringify(context)) : undefined,
             stack
         };
 
-        // Mirror to browser console with color coding
         const style = 
-            level === 'ERROR' ? 'background: #ef4444; color: white; padding: 2px 4px; border-radius: 2px;' : 
-            level === 'WARN' ? 'background: #f59e0b; color: black; padding: 2px 4px; border-radius: 2px;' : 
-            level === 'DEBUG' ? 'color: #06b6d4;' : 
-            level === 'TRACE' ? 'color: #6b7280;' : 'color: #a3e635;';
+            level === 'ERROR' ? 'color: #f87171; font-weight: bold;' : 
+            level === 'WARN' ? 'color: #fbbf24;' : 
+            level === 'INFO' ? 'color: #60a5fa;' : 'color: #9ca3af;';
         
-        console.log(`%c[${level}]`, style, message, context || '');
+        console.log(`%c[${level}] %c${message}`, style, 'color: inherit;', context || '');
 
         this.logs.push(entry);
-        if (this.logs.length > this.maxLogs) {
-            this.logs.shift();
-        }
+        if (this.logs.length > this.maxLogs) this.logs.shift();
         this.notifyListeners();
     }
 
-    // Helper to handle circular references in JSON
-    private getCircularReplacer() {
-        const seen = new WeakSet();
-        return (key: any, value: any) => {
-            if (typeof value === "object" && value !== null) {
-                if (seen.has(value)) {
-                    return "[Circular]";
-                }
-                seen.add(value);
-            }
-            return value;
-        };
+    public info(message: string, context?: any) { this.addLog('INFO', message, context); }
+    public warn(message: string, context?: any) { this.addLog('WARN', message, context); }
+    public error(message: string, context?: any, stack?: string) { this.addLog('ERROR', message, context, stack); }
+    public debug(message: string, context?: any) { this.addLog('DEBUG', message, context); }
+    public trace(message: string, context?: any) { this.addLog('TRACE', message, context); }
+
+    public subscribe(listener: (logs: LogEntry[]) => void) {
+        this.listeners.push(listener);
+        listener([...this.logs]);
+        return () => { this.listeners = this.listeners.filter(l => l !== listener); };
     }
 
-    public info(message: string, context?: any) {
-        this.addLog('INFO', message, context);
-    }
-
-    public warn(message: string, context?: any) {
-        this.addLog('WARN', message, context);
-    }
-
-    public error(message: string, context?: any, stack?: string) {
-        this.addLog('ERROR', message, context, stack);
-    }
-
-    public debug(message: string, context?: any) {
-        this.addLog('DEBUG', message, context);
+    private notifyListeners() {
+        this.listeners.forEach(l => l([...this.logs]));
     }
     
-    public trace(message: string, context?: any) {
-        this.addLog('TRACE', message, context);
-    }
-
-    public getLogs(): LogEntry[] {
-        return [...this.logs];
-    }
-
     public clearLogs() {
         this.logs = [];
         this.notifyListeners();
     }
 
-    public subscribe(listener: (logs: LogEntry[]) => void) {
-        this.listeners.push(listener);
-        listener(this.getLogs());
-        return () => {
-            this.listeners = this.listeners.filter(l => l !== listener);
-        };
-    }
-
-    private notifyListeners() {
-        this.listeners.forEach(l => l(this.getLogs()));
-    }
-    
     public exportLogsJSON(): string {
-        return JSON.stringify(this.logs, null, 2);
+        return JSON.stringify({
+            logs: this.logs,
+            experiments: Array.from(this.experimentRegistry.entries())
+        }, null, 2);
     }
 }
 

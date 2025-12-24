@@ -12,7 +12,19 @@ interface SmasConfigControlsProps {
 export const SmasConfigControls: React.FC<SmasConfigControlsProps> = ({ config, setConfig, disabled }) => {
     return (
         <div className={`bg-gray-800/50 rounded-lg p-3 transition-opacity ${disabled ? 'opacity-50' : ''}`}>
-            <h3 className="text-sm font-semibold text-indigo-300 mb-2">SMAS Configuration</h3>
+            <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold text-indigo-300">SMAS Configuration</h3>
+                <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-gray-500 font-bold uppercase">Dynamic</span>
+                    <button
+                        onClick={() => setConfig(p => ({...p, dynamicPersonaSwitching: !p.dynamicPersonaSwitching}))}
+                        disabled={disabled}
+                        className={`relative inline-flex items-center h-4 rounded-full w-8 transition-colors ${config.dynamicPersonaSwitching ? 'bg-indigo-600' : 'bg-gray-600'}`}
+                    >
+                        <span className={`inline-block w-2.5 h-2.5 transform bg-white rounded-full transition-transform ${config.dynamicPersonaSwitching ? 'translate-x-4.5' : 'translate-x-1'}`} />
+                    </button>
+                </div>
+            </div>
             <div className="space-y-4">
                 <div>
                     <label className="text-xs text-gray-400 flex justify-between">
@@ -22,7 +34,7 @@ export const SmasConfigControls: React.FC<SmasConfigControlsProps> = ({ config, 
                     <input
                         type="range"
                         min="3"
-                        max="12"
+                        max="8"
                         step="1"
                         value={config.maxPersonas}
                         onChange={(e) => setConfig(p => ({ ...p, maxPersonas: +e.target.value }))}
@@ -40,8 +52,8 @@ export const SmasConfigControls: React.FC<SmasConfigControlsProps> = ({ config, 
                     </label>
                     <input
                         type="range"
-                        min="2"
-                        max="20"
+                        min="3"
+                        max="12"
                         step="1"
                         value={config.debateRounds}
                         onChange={(e) => setConfig(p => ({ ...p, debateRounds: +e.target.value }))}
@@ -49,7 +61,7 @@ export const SmasConfigControls: React.FC<SmasConfigControlsProps> = ({ config, 
                         className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
                     />
                     <p className="text-[10px] text-gray-500 mt-1">
-                        Min 2 rounds. Extends dynamically (up to 20) if consensus/ARS score is insufficient.
+                        Dynamic range: 3 to {config.debateRounds} (max 12). Extends if consensus/ARS score is insufficient.
                     </p>
                 </div>
             </div>

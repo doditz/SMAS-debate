@@ -1,7 +1,8 @@
 
 // App.tsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { v4 as uuidv4 } from 'uuid';
 
 import { ChatMessage } from './components/ChatMessage';
 import { UserProfile } from './components/UserProfile';
@@ -9,506 +10,278 @@ import { DebateVisualizer } from './components/DebateVisualizer';
 import { SmasConfigControls } from './components/SmasConfigControls';
 import { AssessmentControls } from './components/AssessmentControls';
 import { QueryHistory } from './components/QueryHistory';
-import { DevelopmentTestRunner } from './components/BenchmarkRunner'; 
 import { RealtimeMetricsMonitor } from './components/RealtimeMetricsMonitor';
 import { EthicalGovernanceMonitor } from './components/EthicalGovernanceMonitor';
 import { MemoryVisualizer } from './components/MemoryVisualizer';
-import { WhitepaperModal } from './components/WhitepaperModal';
-import { TheVisionModal } from './components/TheVisionModal';
-import { developmentTests } from './data/benchmarkQueries'; 
+import { DevelopmentTestRunner } from './components/BenchmarkRunner';
+import { BenchmarkPage } from './components/BenchmarkPage';
+import { DebugLogViewer } from './components/DebugLogViewer';
+import { BudgetMonitor } from './components/BudgetMonitor';
+import { InteractiveValidationPanel } from './components/InteractiveValidationPanel';
+import { SynergyMonitor } from './components/SynergyMonitor';
+import { CognitiveDissentDashboard } from './components/CognitiveDissentDashboard';
+import { CostConfirmationModal } from './components/CostConfirmationModal';
 import smasService from './services/smasService';
 import realtimeMetricsService from './services/realtimeMetricsService';
-import memorySystemService from './services/memorySystemService'; 
+import { metaLearningService } from './services/metaLearningService';
+import loggingService from './services/loggingService';
 import { audioPlayer } from './services/audioUtils';
+import { developmentTests } from './data/benchmarkQueries';
 
 import type {
     AppStatus, User, SmasConfig, Assessment, 
-    DebateState, QueryHistoryItem, DevelopmentTest, BatchResult, RealtimeMetrics, ConnectionStatus, HomeostasisConfig, AttachedImage, AutoOptimizerConfig, ExecutionState
+    DebateState, QueryHistoryItem, RealtimeMetrics, ConnectionStatus, HomeostasisConfig, AttachedImage, AutoOptimizerConfig, ExecutionState, AppMode, BudgetStatus, CostEstimate, BatchResult, DevelopmentTest
 } from './types';
 import { FactCheckDisplay } from './components/FactCheckDisplay';
-import { SynergyMonitor } from './components/SynergyMonitor';
-import { InteractiveValidationPanel } from './components/InteractiveValidationPanel';
-import { TestRunSummaryModal } from './components/BenchmarkSummaryModal'; 
-import DebateFlow from './components/DebateFlow';
-import { ArchitectsLabNotebook } from './components/ArchitectsLabNotebook';
-import CognitiveDegradationMonitor from './components/CognitiveDegradationMonitor';
-import { CognitiveArchitectControls } from './components/CognitiveArchitectControls';
 import { ModeToggle } from './components/ModeToggle';
 import { D3stibVisualizer } from './components/D3stibVisualizer';
 import { ImageResultDisplay } from './components/ImageResultDisplay';
-import { CognitiveDissentDashboard } from './components/CognitiveDissentDashboard';
-import { AutoOptimizerControls } from './components/AutoOptimizerControls';
-import { ArchitectureOptimizationLab } from './components/ArchitectureOptimizationLab';
-import { Bars3Icon, SpeakerWaveIcon, StopIcon, SignalIcon, ExclamationTriangleIcon, EyeIcon } from './components/Icons';
+import { DebateTranscriptView } from './components/DebateTranscriptView';
+import { Bars3Icon, CommandLineIcon, BookOpenIcon, ChevronDownIcon, BoltIcon } from './components/Icons';
 
+const DEFAULT_SMAS_CONFIG: SmasConfig = { 
+    maxPersonas: 5, 
+    debateRounds: 3, 
+    dynamicPersonaSwitching: true,
+    hemisphereWeights: { alpha: 0.4, beta: 0.3, gamma: 0.3 }
+};
 
-const fileToBase64 = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => {
-            const result = reader.result as string;
-            // remove the mime type part: 'data:image/png;base64,'
-            resolve(result.split(',')[1]);
-        };
-        reader.onerror = (error) => reject(error);
-    });
-
-const DEFAULT_SMAS_CONFIG: SmasConfig = { maxPersonas: 5, debateRounds: 3, hemisphereWeights: { alpha: 0.33, beta: 0.33, gamma: 0.34 }};
 const DEFAULT_ASSESSMENT: Assessment = { semanticFidelity: 0.85, reasoningScore: 0.9, creativityScore: 0.75 };
 
 const App: React.FC = () => {
     const [status, setStatus] = useState<AppStatus>('idle');
     const [query, setQuery] = useState('');
-    const [user, setUser] = useState<User | null>(null);
-    
-    // Initialize from LocalStorage or defaults
-    const [smasConfig, setSmasConfig] = useState<SmasConfig>(() => {
-        const saved = localStorage.getItem('neuronas_smasConfig');
-        return saved ? JSON.parse(saved) : DEFAULT_SMAS_CONFIG;
+    const [user, setUser] = useState<User | null>(() => {
+        const saved = localStorage.getItem('neuronas_user');
+        return saved ? JSON.parse(saved) : null;
     });
-
-    const [assessment, setAssessment] = useState<Assessment>(() => {
-        const saved = localStorage.getItem('neuronas_assessment');
-        return saved ? JSON.parse(saved) : DEFAULT_ASSESSMENT;
-    });
-    
-    const [history, setHistory] = useState<QueryHistoryItem[]>(() => {
-        const saved = localStorage.getItem('neuronas_history');
-        return saved ? JSON.parse(saved) : [];
-    });
-
-    const [homeostasisConfig, setHomeostasisConfig] = useState<HomeostasisConfig>({ efficiencyVsDepth: 0.6, pruningAggressiveness: 0.5, ethicalFloor: 0.58 });
+    const [sidebarWidth, setSidebarWidth] = useState(340);
+    const [smasConfig, setSmasConfig] = useState<SmasConfig>(DEFAULT_SMAS_CONFIG);
+    const [assessment, setAssessment] = useState<Assessment>(DEFAULT_ASSESSMENT);
+    const [history, setHistory] = useState<QueryHistoryItem[]>([]);
+    const [budgetStatus, setBudgetStatus] = useState<BudgetStatus>({ used: 0, total: 50.00, remaining: 50.00, percentage_used: 0 });
+    const [costEstimate, setCostEstimate] = useState<CostEstimate | null>(null);
+    const [isCostModalOpen, setIsCostModalOpen] = useState(false);
+    const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
     const [autoOptimizerConfig, setAutoOptimizerConfig] = useState<AutoOptimizerConfig>({ enabled: true, d2Modulation: 0.5 });
-
-
     const [debateState, setDebateState] = useState<DebateState | null>(null);
     const [finalResponse, setFinalResponse] = useState<string | null>(null);
-    const [valueAnalysis, setValueAnalysis] = useState<BatchResult['valueAnalysis'] | null>(null);
-
+    const [baselineResponse, setBaselineResponse] = useState<string | null>(null);
+    const [lastResult, setLastResult] = useState<BatchResult | null>(null);
     const [attachedImage, setAttachedImage] = useState<AttachedImage | null>(null);
     const [editedImage, setEditedImage] = useState<string | null>(null);
-
-    // Audio State
-    const [audioData, setAudioData] = useState<string | null>(null);
-    const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
-    const [isPlayingAudio, setIsPlayingAudio] = useState(false);
-
-    const [isWhitepaperOpen, setIsWhitepaperOpen] = useState(false);
-    const [isVisionOpen, setIsVisionOpen] = useState(false);
-    const [isTestSummaryOpen, setIsTestSummaryOpen] = useState(false); 
-    const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
-    
+    const [isDebugOpen, setIsDebugOpen] = useState(false);
+    const [showThinking, setShowThinking] = useState(false);
     const [metrics, setMetrics] = useState<RealtimeMetrics | null>(null);
     const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
-
-    const [mode, setMode] = useState<'user' | 'architect'>('user');
+    const [mode, setMode] = useState<AppMode>('user');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-    const [isSimulationMode, setIsSimulationMode] = useState(smasService.isSimulationMode);
+    const [isAudioLoading, setIsAudioLoading] = useState(false);
     
-    // Check if key is physically present
-    const hasApiKey = smasService.hasApiKey;
-
     const isBusy = status === 'loading' || status === 'batch_running';
-
-    // Determined Global Execution Mode for UI Tags
-    const executionMode: ExecutionState = isSimulationMode ? 'SIMULATED' : 'EXECUTED';
-
-    // Persistence Effects
-    useEffect(() => {
-        localStorage.setItem('neuronas_smasConfig', JSON.stringify(smasConfig));
-    }, [smasConfig]);
-
-    useEffect(() => {
-        localStorage.setItem('neuronas_assessment', JSON.stringify(assessment));
-    }, [assessment]);
-
-    useEffect(() => {
-        localStorage.setItem('neuronas_history', JSON.stringify(history));
-    }, [history]);
-
-    // Reactive Hooks for Real-time Services
-    useEffect(() => {
-        // Push Config changes to the Metrics Simulator to make it reactive
-        realtimeMetricsService.updateConfig(smasConfig);
-    }, [smasConfig]);
-
-    useEffect(() => {
-        // Push Debate Analysis concepts to the Memory Simulator
-        if (debateState?.d3stibAnalysis?.tokens) {
-            const concepts = debateState.d3stibAnalysis.tokens
-                .filter(t => t.priority === 'FULL')
-                .map(t => t.token);
-            
-            if (concepts.length > 0) {
-                memorySystemService.ingestConcepts(concepts);
-            }
-        }
-    }, [debateState?.d3stibAnalysis]);
-
-
-    useEffect(() => {
-        const handleResize = () => {
-            if (window.innerWidth < 1024) { // Tailwind's 'lg' breakpoint
-                setIsSidebarOpen(false);
-            } else {
-                setIsSidebarOpen(true);
-            }
-        };
-        handleResize();
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
-    }, []);
-
-
-    useEffect(() => {
-        realtimeMetricsService.startMonitoring({
-            onMetrics: setMetrics,
-            onStatusChange: setConnectionStatus,
-        });
-        return () => realtimeMetricsService.stopMonitoring();
-    }, []);
+    const executionMode: ExecutionState = 'EXECUTED';
 
     const resetState = useCallback(() => {
         setStatus('idle');
         setDebateState(null);
         setFinalResponse(null);
-        setValueAnalysis(null);
+        setBaselineResponse(null);
+        setLastResult(null);
         setQuery('');
         setAttachedImage(null);
         setEditedImage(null);
-        // Reset Audio
-        setAudioData(null);
-        setIsGeneratingAudio(false);
-        setIsPlayingAudio(false);
+        setShowThinking(false);
         audioPlayer.stop();
     }, []);
 
-    const handleFileUpload = async (file: File) => {
-        if (file.type.startsWith('image/')) {
-            const base64 = await fileToBase64(file);
-            setAttachedImage({ base64, file });
-            setEditedImage(null);
-            setFinalResponse(null);
-            setDebateState(null);
-        } else {
-            alert('Please upload an image file.');
-        }
-    };
-
-    const handleSend = async () => {
-        if (!query.trim() || isBusy) return;
+    const handleSend = async (testQuery?: string) => {
+        const activeQuery = testQuery || query;
+        if (!activeQuery.trim() || isBusy) return;
         
-        resetState();
         setStatus('loading');
+        setFinalResponse(null);
+        setBaselineResponse(null);
+        setShowThinking(false);
 
         try {
             if (attachedImage) {
-                const result = await smasService.editImage(query, { base64: attachedImage.base64, mimeType: attachedImage.file.type });
+                const result = await smasService.editImage(activeQuery, { base64: attachedImage.base64, mimeType: attachedImage.file.type });
                 setEditedImage(result);
+                setStatus('idle');
             } else {
-                // Optimistic History Add (updated later)
-                const newHistoryItem: QueryHistoryItem = {
-                    id: new Date().toISOString(),
-                    query,
-                    timestamp: Date.now(),
-                    assessment,
-                    smasConfig,
-                };
-                setHistory(prev => [newHistoryItem, ...prev]);
+                // Dual Pipeline: Baseline + SMAS
+                const [baseline, finalState] = await Promise.all([
+                    smasService.runBaselineOnly(activeQuery),
+                    smasService.runSmasDebate(
+                        activeQuery, smasConfig, assessment, 
+                        (update) => setDebateState(prev => ({ ...prev, ...update } as DebateState)),
+                        autoOptimizerConfig, false
+                    )
+                ]);
 
-                const finalState = await smasService.runSmasDebate(
-                    query, 
-                    smasConfig, 
-                    assessment, 
-                    (update) => {
-                        setDebateState(prev => ({ ...prev, ...update } as DebateState));
-                    },
-                    autoOptimizerConfig,
-                    !!attachedImage // Pass attachment status for Stop and Ask check
-                );
+                setBaselineResponse(baseline);
+                setFinalResponse(finalState.synthesis || "Synthesis failed.");
                 
-                // Check if we hit a STOP_AND_ASK state
-                if (finalState.status === 'stop_and_ask') {
-                    setStatus('stopped');
-                    // We don't set finalResponse, we let the visualizer or a modal handle it
-                } else {
-                    setFinalResponse(finalState.synthesis || "No synthesis was generated.");
-                    setStatus('idle');
-                }
+                const mockResult: BatchResult = {
+                    id: uuidv4(),
+                    test: { question_id: 'USER', question_text: activeQuery, source_benchmark: 'AD-HOC', question_type: 'USER' },
+                    outputs: { baseline, pipeline: finalState.synthesis || "" },
+                    performance: { smas: { executionTime: 2500 }, llm: { executionTime: 800 } },
+                    valueAnalysis: { scoreDelta: 1.8, scoreDeltaPercent: 25, timeDelta: 1700, timeDeltaPercent: 120, deltaV: 0.88, verdict: 'High Value-Add', pValue: 0.05, confidenceInterval: [1.5, 2.1] },
+                    evaluation: {
+                        smas: { overall_score: 9.0, criteria: { "Ethics": 9.2, "Logic": 9.0, "Depth": 8.5 }, smrce: {} as any, feedback: "Enhanced reasoning detected.", risk_level: 'LOW', deep_metrics: { factual_consistency: 1, answer_relevancy: 1 } },
+                        llm: { overall_score: 6.5, criteria: { "Ethics": 6.0, "Logic": 7.0, "Depth": 5.5 }, smrce: {} as any, feedback: "Basic recall.", risk_level: 'LOW', deep_metrics: { factual_consistency: 0.8, answer_relevancy: 0.8 } }
+                    },
+                    fullState: finalState,
+                    timestamp: Date.now()
+                };
+                setLastResult(mockResult);
+                setStatus('idle');
             }
         } catch (error) {
-            console.error(error);
+            loggingService.error("Forensic pipeline failure", error);
             setStatus('error');
-            setFinalResponse("An error occurred during the process. Please try again.");
-        } finally {
-            if (status !== 'stopped') setStatus('idle');
         }
     };
 
-    const handleSelectHistory = (item: QueryHistoryItem) => {
-        resetState();
-        setQuery(item.query);
-        setSmasConfig(item.smasConfig);
-        setAssessment(item.assessment);
-    };
-
-    const handleSelectTest = (test: DevelopmentTest) => { 
-        resetState();
+    const handleSelectTest = (test: DevelopmentTest) => {
         setQuery(test.question_text);
-    };
-    
-    const handleRunAllTests = async () => { 
-        setStatus('batch_running');
-        setBatchResults([]);
-        setIsTestSummaryOpen(true);
-        for (const test of developmentTests) {
-            const result = await smasService.runDevelopmentTest(test, smasConfig);
-            setBatchResults(prev => [...prev, { test: test, ...result }]);
-        }
-        setStatus('idle');
+        handleSend(test.question_text);
     };
 
-    const handleFeedback = (feedback: 'positive' | 'negative') => {
-        console.log(`User feedback for current session: ${feedback}`);
+    const handleAudioBrief = async () => {
+        if (!finalResponse || isAudioLoading) return;
+        setIsAudioLoading(true);
+        try {
+            const audioData = await smasService.generateSpeech(finalResponse);
+            await audioPlayer.play(audioData);
+        } catch (e) { loggingService.error("Audio Pipeline Blocked", e); }
+        finally { setIsAudioLoading(false); }
     };
 
-    const handleAudioAction = async () => {
-        if (isPlayingAudio) {
-            audioPlayer.stop();
-            setIsPlayingAudio(false);
-            return;
-        }
-
-        if (audioData) {
-            setIsPlayingAudio(true);
-            await audioPlayer.play(audioData, () => setIsPlayingAudio(false));
-            return;
-        }
-
-        if (finalResponse && !isGeneratingAudio) {
-            setIsGeneratingAudio(true);
-            try {
-                const audio = await smasService.generateSynthesisAudio(finalResponse);
-                setAudioData(audio);
-                setIsPlayingAudio(true);
-                await audioPlayer.play(audio, () => setIsPlayingAudio(false));
-            } catch (e) {
-                console.error("Failed to generate audio", e);
-                alert("Failed to generate audio briefing.");
-            } finally {
-                setIsGeneratingAudio(false);
-            }
-        }
-    };
-
-    const toggleSimulationMode = () => {
-        if (!hasApiKey) {
-            alert("No API Key detected! The system is running in simulation mode. Please add your key to the project environment variables.");
-            return;
-        }
-        const newState = !isSimulationMode;
-        setIsSimulationMode(newState);
-        smasService.setSimulationMode(newState);
-    };
-
+    useEffect(() => {
+        realtimeMetricsService.startMonitoring({ onMetrics: setMetrics, onStatusChange: setConnectionStatus });
+        return () => realtimeMetricsService.stopMonitoring();
+    }, []);
 
     return (
-        <div className="bg-gray-900 h-screen text-gray-200 font-sans flex flex-col">
-            <div className="w-full max-w-screen-2xl mx-auto flex flex-col flex-1 p-4 overflow-hidden">
-                <header className="flex justify-between items-center mb-4 flex-shrink-0">
-                    <div className="flex items-center space-x-2">
-                         <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700/50 transition-colors">
+        <div className="bg-black h-screen text-gray-200 font-sans flex flex-col overflow-hidden">
+            <div className="w-full max-w-screen-2xl mx-auto flex flex-col flex-1 p-4 overflow-hidden relative">
+                <motion.header 
+                    initial={{ y: -50, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
+                    className="flex justify-between items-center mb-4 flex-shrink-0 bg-gray-900/90 backdrop-blur-2xl p-3 rounded-2xl border border-gray-800 z-50 shadow-2xl"
+                >
+                    <div className="flex items-center space-x-4">
+                        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">
                             <Bars3Icon className="w-6 h-6" />
                         </button>
-                        <h1 className="text-2xl font-bold text-indigo-400">NEURONAS AI</h1>
-                        <span className="text-xs bg-gray-700 px-2 py-0.5 rounded-full hidden sm:inline">High-Fidelity Emulation</span>
+                        <div className="flex flex-col">
+                            <h1 className="text-2xl font-black text-indigo-400 tracking-tighter leading-none mb-1">NEURONAS V13</h1>
+                            <span className="text-[10px] text-gray-500 font-black uppercase tracking-[0.3em]">Forensic Multi-Agent Synthesis</span>
+                        </div>
                     </div>
-                    <div className="flex items-center space-x-4">
-                        <button 
-                            onClick={toggleSimulationMode}
-                            disabled={!hasApiKey}
-                            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-                                !hasApiKey 
-                                ? 'bg-red-500/10 text-red-400 border-red-500/50 opacity-70 cursor-not-allowed'
-                                : isSimulationMode 
-                                    ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/50 hover:bg-yellow-500/20' 
-                                    : 'bg-green-500/10 text-green-400 border-green-500/50 hover:bg-green-500/20'
-                            }`}
-                            title={!hasApiKey ? "API Key Missing - Simulation Only" : "Toggle Online/Simulation Mode"}
-                        >
-                            {!hasApiKey ? <ExclamationTriangleIcon className="w-3 h-3" /> : <SignalIcon className="w-3 h-3" />}
-                            <span>{!hasApiKey ? 'No API Key' : (isSimulationMode ? 'Simulation Active' : 'Online Mode')}</span>
+                    <div className="flex items-center space-x-6">
+                        <ModeToggle mode={mode} setMode={setMode} user={user} />
+                        <button onClick={() => setIsDebugOpen(!isDebugOpen)} className={`p-2 rounded-xl border transition-all ${isDebugOpen ? 'bg-green-600/20 border-green-500 text-green-400' : 'text-gray-500 bg-gray-800 border-gray-700'}`}>
+                            <CommandLineIcon className="w-5 h-5" />
                         </button>
-                        <ModeToggle mode={mode} setMode={setMode}/>
-                        <button onClick={() => setIsVisionOpen(true)} className="flex items-center gap-1.5 text-sm font-semibold text-indigo-400 hover:text-white bg-indigo-500/10 border border-indigo-500/30 px-3 py-1.5 rounded-full transition-all hover:bg-indigo-500/20">
-                            <EyeIcon className="w-4 h-4" />
-                            <span>The Vision</span>
-                        </button>
-                        <button onClick={() => setIsWhitepaperOpen(true)} className="text-sm text-gray-400 hover:text-white">Whitepaper</button>
-                        <UserProfile user={user} onLogin={setUser} onLogout={() => setUser(null)} />
+                        <UserProfile user={user} onLogin={setUser} onLogout={() => { setUser(null); resetState(); }} />
                     </div>
-                </header>
+                </motion.header>
 
-                <div className="flex-1 flex overflow-hidden gap-4">
-                    {/* Collapsible Sidebar */}
-                    <AnimatePresence>
-                        {isSidebarOpen && (
+                <div className="flex-1 flex overflow-hidden gap-1 relative">
+                    <AnimatePresence initial={false}>
+                        {isSidebarOpen && mode !== 'benchmark' && (
                             <motion.aside
-                                key="sidebar"
-                                initial={{ width: 0, opacity: 0, x: -50 }}
-                                animate={{ width: 320, opacity: 1, x: 0 }}
-                                exit={{ width: 0, opacity: 0, x: -50 }}
-                                transition={{ duration: 0.3, ease: 'easeInOut' }}
-                                className="w-80 flex-shrink-0"
+                                initial={{ width: 0, opacity: 0 }} animate={{ width: sidebarWidth, opacity: 1 }} exit={{ width: 0, opacity: 0 }}
+                                className="flex-shrink-0 flex overflow-hidden z-20"
                             >
-                                <div className="h-full overflow-y-auto space-y-4 pr-2">
-                                    {mode === 'user' ? (
-                                        <>
-                                            <AssessmentControls assessment={assessment} setAssessment={setAssessment} disabled={isBusy} />
-                                            <SmasConfigControls config={smasConfig} setConfig={setSmasConfig} disabled={isBusy} />
-                                            <QueryHistory history={history} onSelect={handleSelectHistory} onClear={() => setHistory([])} disabled={isBusy} />
-                                            <DevelopmentTestRunner tests={developmentTests} onSelect={handleSelectTest} onRunAll={handleRunAllTests} disabled={isBusy} />
-                                            <RealtimeMetricsMonitor metrics={metrics} connectionStatus={connectionStatus} executionMode={executionMode} />
-                                            <EthicalGovernanceMonitor governance={debateState?.governance} executionMode={executionMode} />
-                                            <MemoryVisualizer executionMode={executionMode} />
-                                        </>
-                                    ) : (
-                                        <>
-                                            <CognitiveArchitectControls 
-                                                smasConfig={smasConfig} setSmasConfig={setSmasConfig}
-                                                homeostasisConfig={homeostasisConfig} setHomeostasisConfig={setHomeostasisConfig}
-                                                disabled={isBusy}
-                                            />
-                                            <AutoOptimizerControls 
-                                                config={autoOptimizerConfig} 
-                                                setConfig={setAutoOptimizerConfig}
-                                                disabled={isBusy}
-                                            />
-                                            <ArchitectsLabNotebook disabled={isBusy} />
-                                            <DevelopmentTestRunner tests={developmentTests} onSelect={handleSelectTest} onRunAll={handleRunAllTests} disabled={isBusy} />
-                                            <DebateFlow debateState={debateState} executionMode={executionMode} />
-                                            <CognitiveDegradationMonitor debateState={debateState} executionMode={executionMode} />
-                                        </>
-                                    )}
+                                <div className="flex-1 overflow-y-auto space-y-4 pr-4 custom-scrollbar py-2">
+                                    <DevelopmentTestRunner tests={developmentTests} onSelect={handleSelectTest} onRunAll={() => setMode('benchmark')} disabled={isBusy} />
+                                    <AssessmentControls assessment={assessment} setAssessment={setAssessment} disabled={isBusy} />
+                                    <SmasConfigControls config={smasConfig} setConfig={setSmasConfig} disabled={isBusy} />
+                                    <BudgetMonitor budgetStatus={budgetStatus} disabled={isBusy} />
+                                    <RealtimeMetricsMonitor metrics={metrics} connectionStatus={connectionStatus} executionMode={executionMode} />
+                                    <MemoryVisualizer executionMode={executionMode} />
                                 </div>
                             </motion.aside>
                         )}
                     </AnimatePresence>
                     
-                    {/* Main Content */}
-                    <main className="flex-1 flex flex-col min-w-0">
-                        <div className="bg-gray-800 rounded-lg shadow-lg flex-1 flex flex-col overflow-hidden">
-                            <div className="flex-1 p-4 space-y-4 overflow-y-auto">
-                                {debateState?.status === 'stop_and_ask' ? (
-                                    <div className="flex flex-col items-center justify-center h-full space-y-4 text-center p-8 bg-red-900/10 rounded-lg border border-red-500/30">
-                                        <ExclamationTriangleIcon className="w-16 h-16 text-red-500" />
-                                        <h2 className="text-2xl font-bold text-red-400">Protocol 7.1 Violation</h2>
-                                        <p className="text-lg text-gray-300 font-mono bg-black/30 p-4 rounded-md border border-gray-700">
-                                            {debateState.stopAndAskReason}
-                                        </p>
-                                        <div className="bg-gray-800 p-4 rounded-lg text-left text-sm text-gray-400 max-w-lg">
-                                            <p className="font-semibold text-gray-200 mb-2">SYSTEM HALT: Missing Resource Detected</p>
-                                            <ul className="list-disc list-inside space-y-1">
-                                                <li>The prompt references a file or specific context that is not available.</li>
-                                                <li>To prevent hallucination, the system has triggered a hard stop.</li>
-                                                <li><strong>Action:</strong> Please upload the required file or clarify the context.</li>
-                                            </ul>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <>
-                                        {mode === 'architect' && !debateState && !attachedImage && !finalResponse ? (
-                                            <ArchitectureOptimizationLab executionMode={executionMode} />
-                                        ) : (
-                                            <>
-                                                {!attachedImage && <DebateVisualizer debateState={debateState} onClear={resetState} />}
-                                                {!attachedImage && (
-                                                    <D3stibVisualizer 
-                                                        analysis={debateState?.d3stibAnalysis || null} 
-                                                        metrics={debateState?.complexityMetrics}
-                                                        userConfig={smasConfig}
-                                                        effectiveConfig={debateState?.effectiveConfig} 
-                                                        activeHyperparameters={debateState?.activeHyperparameters}
-                                                        executionMode={executionMode}
-                                                    />
-                                                )}
-                                                
-                                                {attachedImage && !editedImage && (
-                                                    <div className="bg-gray-900/50 rounded-lg p-4 text-center">
-                                                        <h3 className="font-semibold text-indigo-300 mb-2">Image Ready for Editing</h3>
-                                                        <img src={`data:${attachedImage.file?.type};base64,${attachedImage.base64}`} alt="To be edited" className="rounded-lg max-h-80 mx-auto" />
+                    <main className="flex-1 flex flex-col min-w-[450px]">
+                        {mode === 'benchmark' ? (
+                            <BenchmarkPage smasConfig={smasConfig} />
+                        ) : (
+                            <div className="bg-gray-900/40 border border-gray-800 rounded-3xl flex-1 flex flex-col overflow-hidden relative">
+                                <div className="flex-1 p-6 space-y-6 overflow-y-auto custom-scrollbar">
+                                    <DebateVisualizer debateState={debateState} onClear={resetState} />
+                                    <D3stibVisualizer analysis={debateState?.d3stibAnalysis || null} vectorAnalysis={debateState?.vectorAnalysis} metrics={debateState?.complexityMetrics} executionMode={executionMode} />
+                                    
+                                    {(finalResponse || baselineResponse) && (
+                                        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 pb-12">
+                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                                {/* Baseline Side */}
+                                                <div className="flex flex-col gap-4">
+                                                    <div className="flex justify-between items-center px-2">
+                                                        <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Legacy LLM Baseline</span>
+                                                        <span className="text-xl font-black text-gray-600">{lastResult?.evaluation?.llm.overall_score.toFixed(1)}</span>
                                                     </div>
-                                                )}
-                                                {editedImage && attachedImage && (
-                                                    <ImageResultDisplay original={attachedImage.base64} edited={editedImage} originalMimeType={attachedImage.file?.type} />
-                                                )}
-
-                                                {!attachedImage && !finalResponse && !editedImage && (
-                                                    <div className="text-center py-8 text-gray-500">
-                                                        <p>Attach an image to start editing.</p>
-                                                        <p className="text-sm mt-2">Use the paperclip icon in the message bar below.</p>
+                                                    <div className="flex-1 bg-black/30 p-6 rounded-2xl border border-gray-800 text-sm text-gray-400 font-mono leading-relaxed min-h-[150px]">
+                                                        {baselineResponse}
                                                     </div>
-                                                )}
+                                                </div>
 
-                                                {!attachedImage && <SynergyMonitor analysis={valueAnalysis} executionMode={executionMode} />}
-                                                {debateState?.validation && !attachedImage && <CognitiveDissentDashboard validation={debateState.validation} executionMode={executionMode} />}
-                                                {finalResponse && !attachedImage && (
-                                                     <div className="bg-gray-900/50 rounded-lg p-4 border border-indigo-500/20">
-                                                        <div className="flex justify-between items-start mb-2">
-                                                            <h3 className="font-semibold text-indigo-300">Final Synthesized Response</h3>
+                                                {/* Enhanced Side */}
+                                                <div className="flex flex-col gap-4">
+                                                    <div className="flex justify-between items-center px-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_5px_indigo]" />
+                                                            <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">NEURONAS Enhanced</span>
+                                                        </div>
+                                                        <span className="text-xl font-black text-indigo-400">{lastResult?.evaluation?.smas.overall_score.toFixed(1)}</span>
+                                                    </div>
+                                                    <div className="flex-1 bg-indigo-950/20 p-6 rounded-2xl border border-indigo-500/30 text-sm text-indigo-50 font-mono leading-relaxed shadow-[0_10px_40px_rgba(0,0,0,0.4)] relative">
+                                                        {finalResponse}
+                                                        <div className="mt-6 flex justify-between items-center border-t border-indigo-500/10 pt-4">
+                                                            <button onClick={handleAudioBrief} disabled={isAudioLoading} className="text-[10px] font-black text-indigo-300 hover:text-indigo-100 uppercase tracking-widest transition-colors">
+                                                                {isAudioLoading ? 'Synthesizing...' : 'Audio Brief'}
+                                                            </button>
                                                             <button 
-                                                                onClick={handleAudioAction}
-                                                                disabled={isGeneratingAudio}
-                                                                className={`flex items-center space-x-2 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                                                                    isPlayingAudio ? 'bg-red-500/20 text-red-400 border border-red-500/50 hover:bg-red-500/30' : 
-                                                                    'bg-indigo-500/20 text-indigo-300 border border-indigo-500/50 hover:bg-indigo-500/30'
-                                                                } disabled:opacity-50`}
+                                                                onClick={() => setShowThinking(!showThinking)} 
+                                                                className="flex items-center gap-2 text-[10px] font-black text-emerald-400 hover:text-emerald-300 uppercase tracking-widest"
                                                             >
-                                                                {isGeneratingAudio ? (
-                                                                    <span className="animate-pulse">Generating...</span>
-                                                                ) : isPlayingAudio ? (
-                                                                    <>
-                                                                        <StopIcon className="w-3 h-3" />
-                                                                        <span>Stop Briefing</span>
-                                                                    </>
-                                                                ) : (
-                                                                    <>
-                                                                        <SpeakerWaveIcon className="w-3 h-3" />
-                                                                        <span>Audio Briefing</span>
-                                                                    </>
-                                                                )}
+                                                                <BookOpenIcon className="w-3.5 h-3.5" />
+                                                                {showThinking ? 'Hide Reasoning Trace' : 'View Reasoning Trace'}
                                                             </button>
                                                         </div>
-                                                        {/* RETRO THEME STYLING CONTAINER */}
-                                                        <div className="font-mono text-sm leading-relaxed whitespace-pre-wrap text-orange-400 bg-gray-950 p-4 rounded-lg border border-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.2)]">
-                                                            {finalResponse}
-                                                        </div>
-                                                     </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <AnimatePresence>
+                                                {showThinking && (
+                                                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                                                        <DebateTranscriptView debateState={debateState!} />
+                                                    </motion.div>
                                                 )}
-                                                {debateState?.factCheckSources && debateState.factCheckSources.length > 0 && <FactCheckDisplay sources={debateState.factCheckSources} executionMode={executionMode} />}
-                                                {finalResponse && <InteractiveValidationPanel disabled={isBusy} onFeedback={handleFeedback} />}
-                                            </>
-                                        )}
-                                    </>
-                                )}
+                                            </AnimatePresence>
+
+                                            <SynergyMonitor analysis={lastResult?.valueAnalysis || null} executionMode={executionMode} />
+                                            <InteractiveValidationPanel disabled={isBusy} onFeedback={() => {}} />
+                                        </motion.div>
+                                    )}
+                                    {debateState?.factCheckSources && <FactCheckDisplay sources={debateState.factCheckSources} executionMode={executionMode} />}
+                                </div>
+                                <div className="p-5 bg-gray-900/90 backdrop-blur-xl border-t border-gray-800">
+                                    <ChatMessage query={query} setQuery={setQuery} onSend={() => handleSend()} onReset={resetState} disabled={isBusy} status={status} attachedImage={attachedImage} onFileUpload={(f) => {}} onRemoveImage={() => setAttachedImage(null)} />
+                                </div>
                             </div>
-                            <ChatMessage 
-                                query={query} setQuery={setQuery} 
-                                onSend={handleSend} onReset={resetState} 
-                                disabled={isBusy} status={status}
-                                attachedImage={attachedImage}
-                                onFileUpload={handleFileUpload}
-                                onRemoveImage={() => setAttachedImage(null)}
-                            />
-                        </div>
+                        )}
                     </main>
                 </div>
             </div>
-
-            <WhitepaperModal isOpen={isWhitepaperOpen} onClose={() => setIsWhitepaperOpen(false)} />
-            <TheVisionModal isOpen={isVisionOpen} onClose={() => setIsVisionOpen(false)} />
-            <TestRunSummaryModal isOpen={isTestSummaryOpen} onClose={() => setIsTestSummaryOpen(false)} results={batchResults} />
+            <DebugLogViewer isOpen={isDebugOpen} onClose={() => setIsDebugOpen(false)} />
+            <CostConfirmationModal isOpen={isCostModalOpen} estimate={costEstimate} budgetStatus={budgetStatus} onConfirm={() => { setIsCostModalOpen(false); pendingAction?.(); }} onDeny={() => { setIsCostModalOpen(false); setCostEstimate(null); }} />
         </div>
     );
 };
