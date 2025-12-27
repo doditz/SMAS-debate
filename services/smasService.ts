@@ -11,7 +11,8 @@ import loggingService from "./loggingService";
 import vectorService from "./vectorService";
 import memorySystemService from "./memorySystemService";
 import qronasService from "./qronasService"; 
-import realtimeMetricsService from "./realtimeMetricsService"; // NEW: For OmegaT
+import realtimeMetricsService from "./realtimeMetricsService"; 
+import metaLearningService from "./metaLearningService"; // NEW: Meta-Learning Integration
 import { PERSONA_DATABASE } from "../data/personaDatabase";
 import { v4 as uuidv4 } from 'uuid';
 
@@ -87,14 +88,17 @@ class SmasService {
 
     // --- DYNAMIC PERSONA SELECTOR ---
     private selectPersonas(omegaT: number, maxPersonas: number): { selected: string[], log: any } {
-        // Analytical (Left) vs Creative (Right) Pools
+        // Function to calculate dynamic score: Priority (Static) * MetaWeight (Learned)
+        const getScore = (p: any) => p.priority * metaLearningService.getPersonaWeight(p.name);
+
+        // Analytical (Left) vs Creative (Right) Pools - Sorted by Dynamic Score
         const analyticalPool = Object.values(PERSONA_DATABASE)
             .filter(p => p.specifications.analytical_index > 0.6)
-            .sort((a, b) => b.priority - a.priority);
+            .sort((a, b) => getScore(b) - getScore(a));
             
         const creativePool = Object.values(PERSONA_DATABASE)
             .filter(p => p.specifications.creativity_index > 0.6)
-            .sort((a, b) => b.priority - a.priority);
+            .sort((a, b) => getScore(b) - getScore(a));
             
         const integrators = Object.values(PERSONA_DATABASE).filter(p => p.category === 'integrator');
 
@@ -307,9 +311,18 @@ class SmasService {
                 activeHyperparameters: params 
             });
 
-            // STEP 2: DYNAMIC PERSONA SWAP
+            // STEP 2: DYNAMIC PERSONA SWAP (With DYNAMIC SCALING)
             const omegaT = realtimeMetricsService.calculateHemisphericBalance(query);
-            const personaSelection = this.selectPersonas(omegaT, config.maxPersonas);
+            
+            // DYNAMIC SCALING: Adjust max personas based on complexity
+            // Low complexity (0.2) -> Fewer personas. High complexity (0.9) -> Max config.
+            const dynamicMaxPersonas = Math.max(3, Math.ceil(config.maxPersonas * (0.5 + 0.5 * metrics.hybridScore)));
+            
+            // DYNAMIC ROUNDS: Adjust rounds based on complexity
+            // Minimum 2 rounds, max defined in config, scaled by hybrid score intensity
+            const dynamicRounds = Math.max(2, Math.min(config.debateRounds, Math.ceil(config.debateRounds * (metrics.hybridScore + 0.2))));
+
+            const personaSelection = this.selectPersonas(omegaT, dynamicMaxPersonas);
             
             // Build Perspectives for UI
             const perspectives: PersonaPerspective[] = personaSelection.selected.map(name => {
@@ -319,18 +332,20 @@ class SmasService {
                     hemisphere: def?.category === 'analytical_anchor' ? 'Left' : def?.category === 'creative_expansion' ? 'Right' : 'Central',
                     perspective: def?.specialization_tags[0] || 'General',
                     hash: uuidv4(),
-                    weight: 1.0
+                    weight: metaLearningService.getPersonaWeight(name) // Visually show the learned weight
                 };
             });
 
             onUpdate({ 
                 perspectives, 
-                dynamic_swap: personaSelection.log 
+                dynamic_swap: {
+                    ...personaSelection.log,
+                    reasoning: `${personaSelection.log.reasoning}. Dynamic Scaling: ${dynamicMaxPersonas} Agents / ${dynamicRounds} Rounds`
+                }
             });
 
             // STEP 3: SMAS DEBATE (STREAMING WITH REGEX INDEXING)
             onUpdate({ status: 'debating' });
-            const debateRounds = Math.min(12, Math.max(3, Math.ceil(metrics.hybridScore * 12)));
             
             const promptContent = `DEBATE_ORCHESTRATION: "${query}"\nKNOWLEDGE_BASE: ${JSON.stringify(memoryContext.records)}\nVECTOR_MAPPING_CONTEXT: ${JSON.stringify(vectorMappingResults.map(v => v.metadata.text))}\nD3STIB_JERK: ${metrics.s_triple_prime.toFixed(4)}\nACTIVE_PERSONAS: ${personaSelection.selected.join(", ")}`;
             
@@ -338,7 +353,8 @@ class SmasService {
                 model: 'gemini-3-pro-preview',
                 experiment_id: experimentId,
                 prompt_length: promptContent.length,
-                personas: personaSelection.selected
+                personas: personaSelection.selected,
+                rounds: dynamicRounds
             });
 
             const responseStream = await retryWithBackoff(async () => {
@@ -351,11 +367,11 @@ class SmasService {
                         topP: params.topP,
                         tools: [{ googleSearch: {} }], // MANDATORY GROUNDING
                         systemInstruction: `NEURONAS V13 PROTOCOL:
-                        1. Perform ${debateRounds} rounds of multi-persona debate.
+                        1. Perform ${dynamicRounds} rounds of multi-persona debate.
                         2. Use ONLY these personas: ${personaSelection.selected.join(", ")}.
                         3. Use format: "**[PersonaName]**: <Argument text>".
                         4. PHASE 1: OPENING (Divergence), PHASE 2: CROSS-EXAM (Conflict), PHASE 3: CONVERGENCE (Synthesis).
-                        5. IMPORTANT: Output "[ROUND: X/${debateRounds}]" before each round.
+                        5. IMPORTANT: Output "[ROUND: X/${dynamicRounds}]" before each round.
                         6. CRITICAL: Use Google Search to verify facts. Embed citations inline if found.
                         7. AFTER debate, output JSON: { "debate_analysis": { "most_influential": string, "contention_points": string[], "key_arguments": string[], "counter_arguments": string[] }, "final_output": string }
                         `
@@ -369,7 +385,7 @@ class SmasService {
             let currentTranscript: DebateTranscriptEntry[] = [];
             let activePersona = "Doditz.Core";
             const groundingSources: { web: { uri: string; title: string } }[] = [];
-            let roundTracker = { current: 1, total: debateRounds };
+            let roundTracker = { current: 1, total: dynamicRounds };
             let isJsonBlock = false;
             let jsonBuffer = ""; 
 
@@ -520,7 +536,11 @@ class SmasService {
                 qronasSuperposition: collapsedStates,
                 qronasCollapseTarget: collapseTarget,
                 roundInfo: roundTracker,
-                dynamic_swap: personaSelection.log
+                dynamic_swap: {
+                    ...personaSelection.log,
+                    // Persist the logic for debugging
+                    reasoning: `${personaSelection.log.reasoning}. Scaled to ${dynamicRounds} rounds.`
+                }
             };
             
             await vectorService.addToIndex(state.synthesis!, {
@@ -561,19 +581,7 @@ class SmasService {
 
     public async runDevelopmentTest(test: DevelopmentTest, config: SmasConfig): Promise<BatchResult> {
         const start = Date.now();
-        // Use a persistent ID for the whole batch case to link logs
-        // But runSmasDebate generates its own internal one. 
-        // We'll capture the internal one if we refactor, but for now we rely on the object return.
-        
         const baseline = await this.runBaselineOnly(test.question_text);
-        
-        // We need to capture the state to get the ID, but runSmasDebate returns the state.
-        // The logs inside runSmasDebate are tagged with its internal ID.
-        // We should pass an external ID if possible, but the signature doesn't allow it easily without breaking changes.
-        // Instead, we will extract the ID from the logs or context if we could, but simpler:
-        // We will just let runSmasDebate run and we will assume the logs generated during this await block belong to this test.
-        // However, since we want precise filtering, we will update runSmasDebate to be cleaner in a future refactor.
-        // For now, the experiment_id in the logs will be unique per run.
         
         const resState = await this.runSmasDebate(test.question_text, config, DEFAULT_ASSESSMENT, () => {}, { enabled: true, d2Modulation: 0.5 }, false);
         const synthesis = resState.synthesis || "";
@@ -583,21 +591,7 @@ class SmasService {
         const scoreDelta = evaluation.smas.overall_score - evaluation.llm.overall_score;
         const scoreDeltaPercent = (evaluation.llm.overall_score > 0) ? (scoreDelta / evaluation.llm.overall_score) * 100 : 0;
         
-        // Find the experiment ID from the last log or similar? 
-        // Actually, we can just grab the ID from the logs if we subscribed, but better:
-        // We will assign the ID generated in runSmasDebate to the BatchResult if we modify the return type,
-        // but `BatchResult` generates its own ID.
-        // Let's use the BatchResult ID as the primary key and we might miss internal logs if they don't share it.
-        // Critical Fix: We need the experiment ID from inside runSmasDebate to appear in the result to link them.
-        // Since I cannot change the signature of runSmasDebate easily to return the ID separately without breaking callers,
-        // I will trust that the logs generated are sufficient for the demo if we filter by timestamp or similar? No, explicit is better.
-        // I will add `experimentId` to `DebateState` in a future refactor.
-        // For now, I will fetch logs that happened in the last few seconds? No, flaky.
-        // I will attach the ID to the context vector or similar hack?
-        // Wait, I can just update the `DebateState` to include `experimentId`.
-        // Let's do that. It is safe to add optional props.
-        
-        return {
+        const result: BatchResult = {
             id: uuidv4(), // This is the BatchResult ID
             test,
             outputs: { baseline: baseline, pipeline: synthesis },
@@ -616,6 +610,11 @@ class SmasService {
             timestamp: Date.now(),
             evaluation: evaluation
         };
+
+        // AUTO-LEARNING: Ingest result to refine weights immediately
+        metaLearningService.ingestResult(result);
+
+        return result;
     }
 }
 

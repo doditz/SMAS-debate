@@ -1,4 +1,3 @@
-
 // App.tsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -23,7 +22,7 @@ import { CognitiveDissentDashboard } from './components/CognitiveDissentDashboar
 import { CostConfirmationModal } from './components/CostConfirmationModal';
 import smasService from './services/smasService';
 import realtimeMetricsService from './services/realtimeMetricsService';
-import { metaLearningService } from './services/metaLearningService';
+import metaLearningService from './services/metaLearningService';
 import loggingService from './services/loggingService';
 import { audioPlayer } from './services/audioUtils';
 import { developmentTests } from './data/benchmarkQueries';
@@ -265,6 +264,12 @@ const App: React.FC = () => {
         finally { setIsAudioLoading(false); }
     };
 
+    const handleHumanFeedback = (feedback: 'positive' | 'negative') => {
+        if (lastResult) {
+            metaLearningService.ingestResult(lastResult, feedback);
+        }
+    };
+
     useEffect(() => {
         realtimeMetricsService.startMonitoring({ onMetrics: setMetrics, onStatusChange: setConnectionStatus });
         return () => realtimeMetricsService.stopMonitoring();
@@ -388,7 +393,7 @@ const App: React.FC = () => {
                                                     <SynergyMonitor analysis={lastResult?.valueAnalysis || null} executionMode={executionMode} />
                                                 </div>
                                                 
-                                                <InteractiveValidationPanel disabled={isBusy} onFeedback={() => {}} />
+                                                <InteractiveValidationPanel disabled={isBusy} onFeedback={handleHumanFeedback} />
                                             </motion.div>
                                         )}
                                     </div>
