@@ -13,9 +13,9 @@ export interface SmasConfig {
     debateRounds: number;
     dynamicPersonaSwitching: boolean;
     hemisphereWeights: {
-        alpha: number;
-        beta: number;
-        gamma: number;
+        alpha: number; // Logical
+        beta: number;  // Creative
+        gamma: number; // Central
     };
 }
 
@@ -25,25 +25,16 @@ export interface Assessment {
     creativityScore: number;
 }
 
-export interface QronasState {
-    id: string;
-    thesis: string;
-    stability: number;
-    collapsePotential: number;
-    spin: -1 | 0 | 1;
-    entanglement_score?: number;
-}
-
 export interface D3stibToken {
     token: string;
     priority: 'FULL' | 'PARTIAL' | 'SKIP';
-    i0: number; // Base Importance
-    v: number;  // Velocity (I')
-    a: number;  // Acceleration (I'')
+    embedding?: number[]; 
+    v: number;  // Velocity (1st derivative)
+    a: number;  // Acceleration (2nd derivative)
+    s: number;  // Surge/Jerk (3rd derivative) - Core v13 Innovation
     finalScore: number;
 }
 
-// Vector Index Entry (ChromaDB Mock)
 export interface VectorIndexEntry {
     id: string;
     vector: number[];
@@ -68,20 +59,18 @@ export interface VectorAnalysis {
         L3: number;
     };
     trajectory: {
-        start: number[];
-        mid: number[];
-        end: number[];
         drift: number;
+        history: number[]; // For plotting
     } | null;
     isFastTrackEligible: boolean;
-    matches?: VectorIndexEntry[]; // ChromaDB search results
+    matches?: VectorIndexEntry[];
 }
 
 export interface ComplexityMetrics {
     lexicalDensity: number;
     readabilityScore: number;
     d3stibVolatility: number;
-    s_triple_prime: number;
+    s_triple_prime: number; // The "Jerk" metric
     llmScore: number;
     hybridScore: number;
     classification: string;
@@ -92,21 +81,18 @@ export interface PersonaPerspective {
     hemisphere: 'Left' | 'Right' | 'Central';
     perspective: string;
     hash: string;
-    x?: number;
-    y?: number;
-}
-
-export interface BronasSmrce {
-    specificity: number;
-    measurability: number;
-    reasonableness: number;
-    clarity: number;
-    ethicality: number;
+    weight: number; // Agreement weight w_L / w_R
 }
 
 export interface EvaluationResult {
     overall_score: number;
-    smrce: BronasSmrce;
+    smrce: {
+        sensory: number;
+        memory: number;
+        reasoning: number;
+        coherence: number;
+        ethicality: number;
+    };
     deep_metrics: {
         factual_consistency: number;
         answer_relevancy: number;
@@ -122,13 +108,13 @@ export interface ValueAnalysis {
     scoreDelta: number;
     scoreDeltaPercent: number;
     deltaV: number;
-    verdict: 'SIGNIFICANT_IMPROVEMENT' | 'BASELINE_SUPERIOR' | 'INCONCLUSIVE' | 'High Value-Add' | 'Marginal Gains' | 'Diminishing Returns';
+    verdict: string;
     pValue: number;
     confidenceInterval: [number, number];
 }
 
 export interface BatchResult {
-    id: string; // Experiment ID for W&B
+    id: string;
     test: DevelopmentTest;
     outputs?: {
         baseline: string;
@@ -156,7 +142,7 @@ export interface RealtimeMetrics {
     d3_level: number;
     cognitiveLoad: number;
     filterEfficiency: number;
-    cognitiveFlux: number;
+    cognitiveFlux: number; // F(t)
 }
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
@@ -191,7 +177,7 @@ export interface LogEntry {
     message: string;
     context?: any;
     stack?: string;
-    experiment_id?: string; // W&B linking
+    experiment_id?: string;
 }
 
 export interface DevelopmentTest {
@@ -209,6 +195,7 @@ export interface DebateTranscriptEntry {
     confidence: number;
     memoryAccess?: string;
     citations?: { title: string; url: string }[];
+    timestamp?: number;
 }
 
 export interface DebateAnalysis {
@@ -235,6 +222,25 @@ export interface BronasValidationResult {
     mostInfluentialPersona: string;
 }
 
+// QRONAS Types
+export interface QronasState {
+    id: string;
+    thesis: string;
+    stability: number;
+    collapsePotential: number;
+    spin: -1 | 0 | 1; // -1: Exclude, 0: Superposition, +1: Include
+    entanglement_score?: number;
+}
+
+// NEW: Flow Control Interface
+export interface DebateFlowControl {
+    isPaused: boolean;
+    step: boolean;
+    pause: () => void;
+    resume: () => void;
+    stepForward: () => void;
+}
+
 export interface DebateState {
     status: 'idle' | 'd3stib_analysis' | 'debating' | 'synthesis' | 'governance_check' | 'complete' | 'stop_and_ask' | 'superposition' | 'collapsed';
     synthesis?: string;
@@ -247,7 +253,7 @@ export interface DebateState {
     d3stibAnalysis?: {
         tokens: D3stibToken[];
         volatility: number;
-        jerk: number;
+        jerk: number; // S'''
     };
     vectorAnalysis?: VectorAnalysis;
     complexityMetrics?: ComplexityMetrics;
@@ -262,62 +268,26 @@ export interface DebateState {
         topP: number;
     };
     factCheckSources?: { web: { uri: string; title: string } }[];
+    globalConsensusScore?: number; // GC Score
+    
+    // NEW: Round Tracking
+    roundInfo?: {
+        current: number;
+        total: number;
+    };
+
+    // NEW: Dynamic Persona Switching Log
+    dynamic_swap?: {
+        omegaT: number;
+        original_plan: string[];
+        adjusted_plan: string[];
+        reasoning: string;
+    };
 }
 
 export interface AutoOptimizerConfig {
     enabled: boolean;
     d2Modulation: number;
-}
-
-export interface PersonaSwapEvent {
-    from: string;
-    to: string;
-    reason: string;
-    timestamp: number;
-}
-
-export interface Transparency {
-    title: string;
-    introduction: string;
-    definitions: {
-        state: ExecutionState;
-        title: string;
-        analogy: string;
-        implementation: string;
-    }[];
-}
-
-export interface KnowledgeRecord {
-    id: number;
-    category: string;
-    corePrinciple: string;
-    inferenceMethod: string;
-    dataComplexity: string;
-    experimentalViability: string;
-    deviationLevel: number;
-    knownConstraints: string;
-    testingApproach: string;
-    potentialImpact: string;
-    hemisphere: 'Left' | 'Right' | 'Central';
-}
-
-export interface L3ContextAnalysis {
-    records: KnowledgeRecord[];
-    maxDeviation: number;
-    criticalConstraints: string[];
-    recommendedStrategy: 'Skepticism' | 'Exploration' | 'Balanced' | 'Restrictive';
-    vectorMatches?: VectorIndexEntry[];
-}
-
-export interface NeuronasDatasetItem {
-    name: string;
-    description: string;
-    category: string;
-    url: string;
-    size: string;
-    license: string;
-    format: string;
-    suitable_for: string[];
 }
 
 export interface BudgetStatus {
@@ -354,7 +324,56 @@ export interface PersonaDefinition {
     specialization_tags: string[];
 }
 
+export interface TransparencyDefinition {
+    state: ExecutionState;
+    title: string;
+    analogy: string;
+    implementation: string;
+}
+
+export interface Transparency {
+    title: string;
+    introduction: string;
+    definitions: TransparencyDefinition[];
+}
+
+export interface KnowledgeRecord {
+    id: number;
+    category: string;
+    corePrinciple: string;
+    inferenceMethod: string;
+    dataComplexity: string;
+    experimentalViability: string;
+    deviationLevel: number;
+    knownConstraints: string;
+    testingApproach: string;
+    potentialImpact: string;
+    hemisphere?: string;
+}
+
+export interface L3ContextAnalysis {
+    records: KnowledgeRecord[];
+    maxDeviation: number;
+    criticalConstraints: string[];
+    recommendedStrategy: string;
+}
+
+export interface NeuronasDatasetItem {
+    name: string;
+    description: string;
+    category: string;
+    url: string;
+    size: string;
+    license: string;
+    format: string;
+    suitable_for: string[];
+}
+
 export interface BenchmarkReport {
     timestamp: number;
     results: BatchResult[];
+    summary?: {
+        averageScore: number;
+        lift: number;
+    };
 }

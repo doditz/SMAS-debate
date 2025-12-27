@@ -21,8 +21,13 @@ class LoggingService {
         this.experimentRegistry.set(result.id, result);
         this.info(`[W&B] Experiment Registered: ${result.test.question_id}`, { 
             id: result.id, 
-            lift: `${result.valueAnalysis?.scoreDeltaPercent.toFixed(1)}%` 
+            lift: `${result.valueAnalysis?.scoreDeltaPercent.toFixed(1)}%`,
+            experiment_id: result.id
         });
+    }
+
+    public getLogsByExperiment(experimentId: string): LogEntry[] {
+        return this.logs.filter(log => log.context?.experiment_id === experimentId || log.experiment_id === experimentId);
     }
 
     private addLog(level: LogLevel, message: string, context?: any, stack?: string) {
@@ -32,7 +37,8 @@ class LoggingService {
             level,
             message,
             context: context ? JSON.parse(JSON.stringify(context)) : undefined,
-            stack
+            stack,
+            experiment_id: context?.experiment_id
         };
 
         const style = 

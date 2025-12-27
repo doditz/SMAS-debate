@@ -6,20 +6,28 @@ import { KnowledgeRecord, L3ContextAnalysis, NeuronasDatasetItem } from '../type
 import loggingService from './loggingService';
 import vectorService from './vectorService';
 
+// Table 6: 7-Tier Memory Architecture Specifications
+export type MemoryTier = 
+    | 'L1' | 'L2' | 'L3'  // Analytical (Left)
+    | 'R1' | 'R2' | 'R3'  // Creative (Right)
+    | 'GC';               // Garbage Collection/System
+
 export interface MemoryNode {
     id: string;
     label: string;
     type: 'concept' | 'query' | 'persona_insight' | 'synthesis' | 'knowledge_fact' | 'dataset';
     strength: number; 
     lastAccessed: number;
+    tier: MemoryTier; // Explicit Tier Assignment
+    hemisphere: 'Left' | 'Right' | 'System';
     data?: KnowledgeRecord | NeuronasDatasetItem;
-    tier?: string;
+    connections: string[]; // IDs of connected nodes for Hebbian logic
 }
 
 export interface MemoryLink {
     source: string;
     target: string;
-    strength: number;
+    strength: number; // Synaptic weight w_ij
 }
 
 export interface MemoryState {
@@ -30,10 +38,17 @@ export interface MemoryState {
 class MemorySystemService {
     private memoryState: MemoryState = { nodes: [], links: [] };
     private intervalId: number | null = null;
-    private maxNodes = 60;
+    private readonly MAX_NODES_PER_TIER = {
+        L1: 15, L2: 30, L3: 50,
+        R1: 15, R2: 30, R3: 50,
+        GC: 10
+    };
     
     // THE "SQL" DATABASE (Relational Store)
     private l3RelationalStore: Map<number, KnowledgeRecord> = new Map();
+
+    // Hebbian Learning Rate (eta) from Eq (3)
+    private readonly HEBBIAN_RATE = 0.15; 
 
     constructor() {
         this.initializeRelationalStore();
@@ -87,15 +102,39 @@ class MemorySystemService {
 
     private loadNeuronasDatasets() {
         const datasets = neuronasDataset.datasets as NeuronasDatasetItem[];
-        const nodes: MemoryNode[] = datasets.map(ds => ({
-            id: `ds-${ds.name.toLowerCase().replace(/\s+/g, '-')}`,
-            label: ds.name,
-            type: 'dataset',
-            strength: 0.8,
-            lastAccessed: Date.now(),
-            data: ds
-        }));
+        const nodes: MemoryNode[] = datasets.map(ds => {
+            // Assign Tier based on suitability
+            let tier: MemoryTier = 'L3';
+            let hemi: 'Left' | 'Right' = 'Left';
+            
+            if (ds.suitable_for.includes('right_hemisphere')) {
+                tier = 'R2';
+                hemi = 'Right';
+            } else if (ds.suitable_for.includes('left_hemisphere')) {
+                tier = 'L2';
+                hemi = 'Left';
+            }
+
+            return {
+                id: `ds-${ds.name.toLowerCase().replace(/\s+/g, '-')}`,
+                label: ds.name,
+                type: 'dataset',
+                strength: 0.8,
+                lastAccessed: Date.now(),
+                tier: tier,
+                hemisphere: hemi,
+                data: ds,
+                connections: []
+            };
+        });
         this.updateMemoryGraph(nodes);
+    }
+
+    // Equation 17: Tier Selection Algorithm
+    private determineTier(contextAge: number, importance: number, hemisphere: 'Left' | 'Right'): MemoryTier {
+        if (contextAge < 0.3 || importance > 0.8) return hemisphere === 'Left' ? 'L1' : 'R1'; // Immediate
+        if (contextAge < 0.7 || importance > 0.5) return hemisphere === 'Left' ? 'L2' : 'R2'; // Working
+        return hemisphere === 'Left' ? 'L3' : 'R3'; // Long-term
     }
 
     public retrieveL3Context(query: string): L3ContextAnalysis {
@@ -107,8 +146,8 @@ class MemorySystemService {
             queryLower.includes(r.corePrinciple.toLowerCase())
         );
 
-        // 2. The synthesis will also benefit from vector search performed in smasService
-        const relevant = sqlMatches.slice(0, 3);
+        // 2. Ingest into Memory Graph (activating Hebbian learning)
+        const relevant = sqlMatches.slice(0, 5);
         this.ingestKnowledge(relevant);
 
         let maxDeviation = Math.max(0, ...relevant.map(r => r.deviationLevel));
@@ -129,20 +168,28 @@ class MemorySystemService {
             type: 'knowledge_fact',
             strength: 0.95,
             lastAccessed: Date.now(),
-            data: rec
+            tier: 'L3', // Facts default to L3 (Long term analytical)
+            hemisphere: 'Left',
+            data: rec,
+            connections: []
         }));
         this.updateMemoryGraph(newNodes);
+        this.applyHebbianUpdates(newNodes.map(n => n.id));
     }
 
-    public ingestConcepts(concepts: string[]) {
+    public ingestConcepts(concepts: string[], hemisphere: 'Left' | 'Right' = 'Right') {
         const newNodes: MemoryNode[] = concepts.slice(0, 3).map((concept, i) => ({
             id: `c-${Date.now()}-${i}`,
             label: concept,
-            type: 'query',
+            type: 'concept',
             strength: 1.0,
             lastAccessed: Date.now(),
+            tier: hemisphere === 'Left' ? 'L1' : 'R1', // New concepts start in immediate memory
+            hemisphere: hemisphere,
+            connections: []
         }));
         this.updateMemoryGraph(newNodes);
+        this.applyHebbianUpdates(newNodes.map(n => n.id));
     }
 
     private updateMemoryGraph(newNodes: MemoryNode[]) {
@@ -150,16 +197,53 @@ class MemorySystemService {
         const filteredNew = newNodes.filter(n => !currentIds.has(n.id));
         this.memoryState.nodes.push(...filteredNew);
         
-        if (this.memoryState.nodes.length > this.maxNodes) {
-            this.memoryState.nodes.sort((a, b) => b.strength - a.strength);
-            this.memoryState.nodes = this.memoryState.nodes.slice(0, this.maxNodes);
+        // Enforce Tier Limits (Garbage Collection)
+        this.runGarbageCollection();
+    }
+
+    // Equation 3: Hebbian Learning
+    // w_ij(t+1) = w_ij(t) + eta * a_i(t) * a_j(t)
+    private applyHebbianUpdates(activatedIds: string[]) {
+        // Create full mesh connections between simultaneously activated nodes
+        for (let i = 0; i < activatedIds.length; i++) {
+            for (let j = i + 1; j < activatedIds.length; j++) {
+                const idA = activatedIds[i];
+                const idB = activatedIds[j];
+                
+                let link = this.memoryState.links.find(l => 
+                    (l.source === idA && l.target === idB) || (l.source === idB && l.target === idA)
+                );
+
+                if (!link) {
+                    link = { source: idA, target: idB, strength: 0.1 };
+                    this.memoryState.links.push(link);
+                }
+
+                // Activation a(t) assumed 1.0 for currently active nodes
+                // Update weight
+                link.strength = Math.min(1.0, link.strength + this.HEBBIAN_RATE * 1.0 * 1.0);
+            }
+        }
+    }
+
+    private runGarbageCollection() {
+        // Sort by strength and tier
+        // This is a simplified GC logic. Real logic would move items between tiers.
+        if (this.memoryState.nodes.length > 80) {
+             this.memoryState.nodes.sort((a, b) => b.strength - a.strength);
+             this.memoryState.nodes = this.memoryState.nodes.slice(0, 80);
         }
     }
 
     startPublishing(callback: (state: MemoryState) => void) {
         if (this.intervalId) return;
         this.intervalId = window.setInterval(() => {
-            this.memoryState.nodes.forEach(n => { if(n.id !== 'root') n.strength *= 0.997; });
+            // Decay strengths (Forgetting curve)
+            this.memoryState.nodes.forEach(n => { n.strength *= 0.995; });
+            
+            // Prune weak links
+            this.memoryState.links = this.memoryState.links.filter(l => l.strength > 0.05);
+            
             callback({...this.memoryState});
         }, 1000);
     }

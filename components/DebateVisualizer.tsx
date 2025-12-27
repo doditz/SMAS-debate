@@ -2,8 +2,8 @@
 // components/DebateVisualizer.tsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { DebateState, PersonaPerspective, QronasState } from '../types';
-import { ChartBarIcon, TrashIcon } from './Icons';
+import { DebateState, PersonaPerspective, QronasState, DebateFlowControl } from '../types';
+import { ChartBarIcon, TrashIcon, PlayIcon, StopIcon, BoltIcon, ExclamationTriangleIcon } from './Icons';
 
 const hemisphereColors: { [key: string]: string } = {
     'Left': 'bg-blue-500/20 border-blue-400 text-blue-200',
@@ -14,6 +14,7 @@ const hemisphereColors: { [key: string]: string } = {
 interface DebateVisualizerProps {
     debateState: DebateState | null;
     onClear?: () => void;
+    flowControl?: DebateFlowControl;
 }
 
 // Deterministic pseudo-random for consistent layout
@@ -63,7 +64,7 @@ const SuperpositionVisualizer: React.FC<{ superposition: QronasState[]; collapse
     const safeSuperposition = superposition || [];
 
     return (
-        <div className="flex flex-col items-center justify-center p-4 h-full">
+        <div className="flex flex-col items-center justify-center p-4 h-full w-full overflow-y-auto">
             <AnimatePresence mode="wait">
                 {!isCollapsed && (
                     <motion.div
@@ -71,7 +72,7 @@ const SuperpositionVisualizer: React.FC<{ superposition: QronasState[]; collapse
                         initial={{ opacity: 0, y: -20 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0 }}
-                        className="px-3 py-1.5 bg-gray-700/50 rounded-full text-center text-sm font-semibold mb-6 border border-gray-600"
+                        className="px-3 py-1.5 bg-gray-700/50 rounded-full text-center text-sm font-semibold mb-6 border border-gray-600 shrink-0"
                     >
                         QRONAS Engine: Evaluating Strategy Vectors...
                     </motion.div>
@@ -81,14 +82,14 @@ const SuperpositionVisualizer: React.FC<{ superposition: QronasState[]; collapse
                         key="collapsed-label"
                         initial={{ opacity: 0, scale: 0.8 }}
                         animate={{ opacity: 1, scale: 1 }}
-                         className="px-3 py-1.5 bg-indigo-600/20 rounded-full text-center text-sm font-semibold mb-6 border border-indigo-500 text-indigo-200"
+                         className="px-3 py-1.5 bg-indigo-600/20 rounded-full text-center text-sm font-semibold mb-6 border border-indigo-500 text-indigo-200 shrink-0"
                     >
                         Wavefunction Collapsed: Strategy Selected
                     </motion.div>
                 )}
             </AnimatePresence>
 
-            <div className="flex justify-center items-stretch gap-4 w-full h-full overflow-x-auto pb-2">
+            <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:flex xl:flex-wrap xl:justify-center gap-4 px-2">
                 <AnimatePresence>
                     {safeSuperposition.map((state, i) => {
                         const isSelected = collapseTarget?.id === state.id;
@@ -102,19 +103,18 @@ const SuperpositionVisualizer: React.FC<{ superposition: QronasState[]; collapse
                                 initial={{ opacity: 0, scale: 0.8, y: 20 }}
                                 animate={{ 
                                     opacity: 1, 
-                                    scale: isSelected ? 1.1 : 1, 
+                                    scale: isSelected ? 1.05 : 1, 
                                     y: 0,
-                                    flex: isSelected ? 0.6 : 1 // Grow selected item
                                 }}
                                 exit={{ opacity: 0, scale: 0, transition: { duration: 0.3 } }}
                                 transition={{ duration: 0.5, type: 'spring' }}
-                                className="relative min-w-[150px] max-w-[250px]"
+                                className="relative w-full sm:min-w-[260px] xl:max-w-[300px]"
                             >
                                 <motion.div
                                     className={`h-full p-4 border-2 rounded-xl flex flex-col justify-between backdrop-blur-sm transition-colors
                                         ${isSelected 
                                             ? 'bg-indigo-500/20 border-indigo-400 shadow-[0_0_30px_rgba(99,102,241,0.3)]' 
-                                            : 'bg-gray-800/40 border-gray-600 hover:border-gray-500'}
+                                            : 'bg-gray-800/60 border-gray-600 hover:border-gray-500'}
                                     `}
                                 >
                                     <div>
@@ -231,7 +231,42 @@ const BrainDebate: React.FC<{ perspectives: PersonaPerspective[], dissentLevel?:
     );
 };
 
-export const DebateVisualizer: React.FC<DebateVisualizerProps> = ({ debateState, onClear }) => {
+const Controls: React.FC<{ flowControl: DebateFlowControl }> = ({ flowControl }) => {
+    // Force re-render on state change handled by parent, but play/pause local toggle for UI feel
+    const [paused, setPaused] = useState(flowControl.isPaused);
+
+    const toggle = () => {
+        if (paused) {
+            flowControl.resume();
+            setPaused(false);
+        } else {
+            flowControl.pause();
+            setPaused(true);
+        }
+    };
+
+    return (
+        <div className="flex items-center space-x-1 bg-gray-900 rounded-lg p-1 border border-gray-700 shadow-lg">
+            <button
+                onClick={toggle}
+                className={`p-1.5 rounded hover:bg-gray-700 transition-colors ${paused ? 'text-green-400' : 'text-yellow-400'}`}
+                title={paused ? "Resume Debate" : "Pause Debate"}
+            >
+                {paused ? <PlayIcon className="w-4 h-4" /> : <StopIcon className="w-4 h-4" />}
+            </button>
+            <button
+                onClick={() => flowControl.stepForward()}
+                disabled={!paused}
+                className="p-1.5 rounded hover:bg-gray-700 transition-colors text-indigo-400 disabled:opacity-30 disabled:cursor-not-allowed"
+                title="Step Forward (Next Turn)"
+            >
+                <BoltIcon className="w-4 h-4" />
+            </button>
+        </div>
+    );
+};
+
+export const DebateVisualizer: React.FC<DebateVisualizerProps> = ({ debateState, onClear, flowControl }) => {
     const [view, setView] = useState<'qtree' | 'brain'>('qtree');
 
     useEffect(() => {
@@ -252,9 +287,9 @@ export const DebateVisualizer: React.FC<DebateVisualizerProps> = ({ debateState,
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="bg-gray-800 rounded-lg border border-gray-700 shadow-lg overflow-hidden h-80 flex flex-col"
+            className="bg-gray-800 rounded-lg border border-gray-700 shadow-lg overflow-hidden h-96 flex flex-col relative"
         >
-             <div className="flex justify-between items-center p-3 border-b border-gray-700 bg-gray-900/30">
+             <div className="flex justify-between items-center p-3 border-b border-gray-700 bg-gray-900/30 z-10 relative">
                 <div className="flex items-center space-x-3">
                     <div className={`p-1.5 rounded-md ${view === 'qtree' ? 'bg-amber-500/10 text-amber-400' : 'bg-indigo-500/10 text-indigo-400'}`}>
                         <ChartBarIcon className="w-4 h-4" />
@@ -263,10 +298,20 @@ export const DebateVisualizer: React.FC<DebateVisualizerProps> = ({ debateState,
                         <h3 className="text-sm font-bold text-gray-200">
                             {view === 'qtree' ? 'QRONAS Superposition' : 'SMAS Neural Debate'}
                         </h3>
-                        <p className="text-[10px] text-gray-500 uppercase tracking-wider font-mono">{debateState.status}</p>
+                        <p className="text-[10px] text-gray-500 uppercase tracking-wider font-mono flex items-center gap-2">
+                            {debateState.status}
+                            {debateState.roundInfo && (
+                                <span className="text-indigo-400 bg-indigo-500/10 px-1.5 rounded">
+                                    ROUND {debateState.roundInfo.current}/{debateState.roundInfo.total}
+                                </span>
+                            )}
+                        </p>
                     </div>
                 </div>
                 <div className="flex items-center space-x-2">
+                    {flowControl && debateState.status === 'debating' && (
+                        <Controls flowControl={flowControl} />
+                    )}
                     {onClear && debateState.status === 'complete' && (
                          <button onClick={onClear} className="p-1.5 text-gray-500 hover:text-red-400 transition-colors" title="Clear Visualization">
                             <TrashIcon className="w-4 h-4" />
@@ -274,6 +319,7 @@ export const DebateVisualizer: React.FC<DebateVisualizerProps> = ({ debateState,
                     )}
                 </div>
             </div>
+            
             <div className="flex-1 relative overflow-hidden bg-gradient-to-b from-gray-800 to-gray-900">
                  <AnimatePresence mode="wait">
                     {view === 'qtree' ? (
